@@ -78,9 +78,9 @@ pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) ->
     let color = if achievement.is_some() { Color::Yellow } else { Color::Cyan };
     let duration = if achievement.is_some() { 2500u64 } else { 1500u64 };
 
-    // Use crossterm (same approach as render_progress_bar which works)
     queue!(tty,
         cursor::SavePosition,
+        cursor::Hide,
         cursor::MoveTo(0, bottom),
         Clear(ClearType::CurrentLine),
         SetForegroundColor(color),
@@ -93,10 +93,8 @@ pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) ->
     thread::sleep(Duration::from_millis(duration));
 
     queue!(tty,
-        cursor::SavePosition,
         cursor::MoveTo(0, bottom),
         Clear(ClearType::CurrentLine),
-        cursor::RestorePosition,
     )?;
     tty.flush()
 }
