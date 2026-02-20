@@ -158,8 +158,7 @@ fn register_systemd(binary: &str) -> Result<()> {
         .join(".config/systemd/user");
     std::fs::create_dir_all(&service_dir)?;
     let unit = format!(
-        "[Unit]\nDescription=cwinner celebration daemon\nAfter=default.target\n\n[Service]\nExecStart={binary}\
-         daemon\nRestart=on-failure\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n"
+        "[Unit]\nDescription=cwinner celebration daemon\nAfter=default.target\n\n[Service]\nExecStart={binary} daemon\nRestart=on-failure\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n"
     );
     std::fs::write(service_dir.join("cwinner.service"), unit)?;
     let _ = std::process::Command::new("systemctl")
