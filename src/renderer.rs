@@ -3,7 +3,7 @@ use crate::state::State;
 use crossterm::{
     cursor, execute, queue,
     style::{Color, Print, ResetColor, SetForegroundColor},
-    terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use rand::Rng;
 use std::fs::OpenOptions;
@@ -61,6 +61,7 @@ fn tty_size(tty: &std::fs::File) -> (u16, u16) {
 pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) -> io::Result<()> {
     let mut tty = open_tty(tty_path)?;
     let (_, rows) = tty_size(&tty);
+    let bottom = rows.saturating_sub(1);
 
     let msg = if let Some(name) = achievement {
         format!(" 🏆 {} │ {} │ {} XP ", name, state.level_name, state.xp)
@@ -74,22 +75,29 @@ pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) ->
         format!(" ⚡ {} │ {} │ {} XP ", state.level_name, bar, state.xp)
     };
 
-    // Use \e7 save, move to absolute bottom row (rows;1), print, \e8 restore
-    let bottom_row = rows;
-    write!(tty, "\x1b7\x1b[{};1H\x1b[2K", bottom_row)?;
-    if achievement.is_some() {
-        write!(tty, "\x1b[33m{}\x1b[0m", msg)?;
-    } else {
-        write!(tty, "\x1b[36m{}\x1b[0m", msg)?;
-    }
-    write!(tty, "\x1b8")?;
+    let color = if achievement.is_some() { Color::Yellow } else { Color::Cyan };
+    let duration = if achievement.is_some() { 2500u64 } else { 1500u64 };
+
+    // Use crossterm (same approach as render_progress_bar which works)
+    queue!(tty,
+        cursor::SavePosition,
+        cursor::MoveTo(0, bottom),
+        Clear(ClearType::CurrentLine),
+        SetForegroundColor(color),
+        Print(&msg),
+        ResetColor,
+        cursor::RestorePosition,
+    )?;
     tty.flush()?;
 
-    let duration = if achievement.is_some() { 2500 } else { 1500 };
     thread::sleep(Duration::from_millis(duration));
 
-    // Clear the toast
-    write!(tty, "\x1b7\x1b[{};1H\x1b[2K\x1b8", bottom_row)?;
+    queue!(tty,
+        cursor::SavePosition,
+        cursor::MoveTo(0, bottom),
+        Clear(ClearType::CurrentLine),
+        cursor::RestorePosition,
+    )?;
     tty.flush()
 }
 
