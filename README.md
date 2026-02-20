@@ -1,39 +1,39 @@
 # cwinner
 
-Gamification pro [Claude Code](https://claude.ai/code). Sleduje tvůj postup, uděluje XP a přehrává zvuky při commitech, dokončených úkolech a průlomových momentech.
+Gamification for [Claude Code](https://claude.ai/code). Tracks your progress, awards XP, and plays sounds on commits, completed tasks, and breakthrough moments.
 
-## Co dělá
+## Features
 
-- **XP a levely** — každá akce v Claude Code přidává body
-- **Zvukové efekty** — WAV soubory generované za běhu, žádné externí závislosti
-- **Commit streaky** — počítá po sobě jdoucí dny s commitem
-- **Achievements** — odemykají se za milníky
-- **Daemon** — běží na pozadí jako systemd/launchd service, přijímá eventy přes Unix socket
+- **XP and levels** — every action in Claude Code earns points
+- **Sound effects** — WAV files generated at runtime, no external assets or dependencies
+- **Commit streaks** — counts consecutive days with a commit
+- **Achievements** — unlocked at milestones
+- **Daemon** — runs in the background as a systemd/launchd service, receives events over a Unix socket
 
-## Instalace
+## Install
 
 ```bash
 cargo build --release
 ./target/release/cwinner install
 ```
 
-`install` udělá automaticky:
-- přidá hooks do `~/.claude/settings.json`
-- nainstaluje git hooks (`post-commit`, `post-push`)
-- vygeneruje sound pack do `~/.config/cwinner/sounds/default/`
-- zaregistruje systemd user service (Linux) nebo launchd agent (macOS)
+`install` does everything automatically:
+- adds hooks to `~/.claude/settings.json`
+- installs git hooks (`post-commit`, `post-push`)
+- generates a default sound pack to `~/.config/cwinner/sounds/default/`
+- registers a systemd user service (Linux) or launchd agent (macOS)
 
-## Příkazy
+## Commands
 
 ```
-cwinner status        # aktuální level, XP, streak
-cwinner stats         # podrobné statistiky a achievements
-cwinner sounds list   # dostupné sound packy
-cwinner install       # instalace
-cwinner uninstall     # odinstalace
+cwinner status        # current level, XP, streak
+cwinner stats         # detailed stats and achievements
+cwinner sounds list   # available sound packs
+cwinner install       # install
+cwinner uninstall     # uninstall
 ```
 
-## Konfigurace
+## Configuration
 
 `~/.config/cwinner/config.toml`:
 
@@ -54,19 +54,19 @@ splash_screen = true
 progress_bar = true
 ```
 
-## Sound packy
+## Sound packs
 
-Vlastní pack = adresář WAV/OGG/MP3 souborů v `~/.config/cwinner/sounds/<název>/`:
+A custom pack is a directory of WAV/OGG/MP3 files under `~/.config/cwinner/sounds/<name>/`:
 
 ```
-mini.wav        # rutinní akce
-milestone.wav   # dokončený úkol, commit
-epic.wav        # průlom (bash fail → pass)
+mini.wav        # routine action
+milestone.wav   # completed task, commit
+epic.wav        # breakthrough (bash fail → pass)
 fanfare.wav     # git push
 streak.wav      # commit streak
 ```
 
-## Architektura
+## Architecture
 
 ```
 cwinner hook <event>   →   Unix socket   →   cwinnerd daemon
@@ -75,9 +75,9 @@ cwinner hook <event>   →   Unix socket   →   cwinnerd daemon
                                                └ play sound
 ```
 
-Daemon (`cwinnerd`) běží trvale, hook skripty jsou odlehčené — jen pošlou JSON event na socket a skončí.
+The daemon (`cwinnerd`) runs persistently. Hook scripts are lightweight — they just send a JSON event to the socket and exit.
 
-## Vývoj
+## Development
 
 ```bash
 cargo test
