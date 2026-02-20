@@ -74,11 +74,47 @@ fn main() {
         }
         Commands::Stats => {
             let s = State::load();
-            println!("Statistiky:");
-            println!("  XP: {} | Level: {} {}", s.xp, s.level, s.level_name);
-            println!("  Commity: {} | Streak: {} dní", s.commits_total, s.commit_streak_days);
-            println!("  Nástroje použity: {}", s.tools_used.len());
-            println!("  Achievements: {}", s.achievements_unlocked.join(", "));
+            let next_xp = cwinner_lib::renderer::xp_for_next_level(s.level);
+            let level_idx = (s.level.saturating_sub(1)) as usize;
+            let prev_threshold = cwinner_lib::renderer::LEVEL_THRESHOLDS
+                .get(level_idx)
+                .copied()
+                .unwrap_or(0);
+            let xp_in_level = s.xp.saturating_sub(prev_threshold);
+            let xp_needed = next_xp.saturating_sub(prev_threshold);
+            let bar = cwinner_lib::renderer::xp_bar_string(xp_in_level, xp_needed, 20);
+
+            println!("Stats:");
+            println!("  XP:      {} [{}] → {}", s.xp, bar, next_xp);
+            println!("  Level:   {} — {}", s.level, s.level_name);
+            println!("  Commits: {} │ Streak: {} days", s.commits_total, s.commit_streak_days);
+            println!("  Tools used: {}", s.tools_used.len());
+            println!();
+
+            let unlocked = &s.achievements_unlocked;
+            if unlocked.is_empty() {
+                println!("Achievements: none yet");
+            } else {
+                println!("Achievements ({}/{}):", unlocked.len(), cwinner_lib::achievements::REGISTRY.len());
+                for id in unlocked {
+                    if let Some(a) = cwinner_lib::achievements::REGISTRY.iter().find(|a| a.id == id.as_str()) {
+                        println!("  ✓ {} — {}", a.name, a.description);
+                    } else {
+                        println!("  ✓ {}", id);
+                    }
+                }
+            }
+
+            println!();
+            let locked: Vec<_> = cwinner_lib::achievements::REGISTRY.iter()
+                .filter(|a| !unlocked.iter().any(|id| id == a.id))
+                .collect();
+            if !locked.is_empty() {
+                println!("Locked ({}):", locked.len());
+                for a in locked {
+                    println!("  ○ {} — {}", a.name, a.description);
+                }
+            }
         }
         Commands::Hook { event } => {
             let tty_path = get_tty();

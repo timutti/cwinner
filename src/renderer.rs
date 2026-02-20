@@ -11,7 +11,7 @@ use std::io::{self, Write};
 use std::thread;
 use std::time::Duration;
 
-const LEVEL_THRESHOLDS: &[u32] = &[0, 100, 500, 1500, 5000, u32::MAX];
+pub const LEVEL_THRESHOLDS: &[u32] = &[0, 100, 500, 1500, 5000, u32::MAX];
 const CONFETTI_CHARS: &[char] = &['✦', '★', '♦', '●', '*', '+', '#', '✿', '❋'];
 const CONFETTI_COLORS: &[Color] = &[
     Color::Red, Color::Green, Color::Yellow, Color::Blue,
