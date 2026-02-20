@@ -151,26 +151,31 @@ fn main() {
 }
 
 fn get_tty() -> String {
-    // Claude Code hooks: stdin je pipe (JSON), ale stderr/stdout mohou být TTY
-    for fd in [2, 1, 0] {
-        if let Ok(path) = std::fs::read_link(format!("/proc/self/fd/{}", fd)) {
-            let s = path.to_string_lossy().to_string();
-            if s.starts_with("/dev/pts/") {
-                return s;
-            }
-        }
-    }
-    // Zkus rodičovský proces (Claude Code)
-    if let Ok(stat) = std::fs::read_to_string("/proc/self/stat") {
-        if let Some(ppid) = stat.split(") ").last().and_then(|s| s.split_whitespace().nth(1)) {
-            for fd in [0, 1, 2] {
-                if let Ok(path) = std::fs::read_link(format!("/proc/{}/fd/{}", ppid, fd)) {
-                    let s = path.to_string_lossy().to_string();
-                    if s.starts_with("/dev/pts/") {
-                        return s;
-                    }
+    // Walk up the process tree looking for an ancestor with a /dev/pts/* fd.
+    // Claude Code hooks have redirected fds, so we must climb to find the terminal.
+    let mut pid = std::process::id().to_string();
+    for _ in 0..10 {
+        for fd in [0, 1, 2] {
+            if let Ok(path) = std::fs::read_link(format!("/proc/{}/fd/{}", pid, fd)) {
+                let s = path.to_string_lossy().to_string();
+                if s.starts_with("/dev/pts/") {
+                    return s;
                 }
             }
+        }
+        // Move to parent process
+        let stat_path = format!("/proc/{}/stat", pid);
+        if let Ok(stat) = std::fs::read_to_string(&stat_path) {
+            if let Some(ppid) = stat.split(") ").last().and_then(|s| s.split_whitespace().nth(1)) {
+                if ppid == "0" || ppid == "1" || ppid == pid {
+                    break;
+                }
+                pid = ppid.to_string();
+            } else {
+                break;
+            }
+        } else {
+            break;
         }
     }
     // macOS fallback
