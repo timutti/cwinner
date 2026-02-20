@@ -43,13 +43,19 @@ pub fn install(binary_path: &Path) -> Result<()> {
         println!("✓ Konfigurace vytvořena v {}", config_path.display());
     }
 
-    // 4. State dir
+    // 4. Extract bundled WAV sounds
+    let sounds_dir = config_dir.join("sounds").join("default");
+    crate::sounds::extract_all_sounds(&sounds_dir)
+        .context("Failed to extract default sound pack")?;
+    println!("  Sound pack extracted to {}", sounds_dir.display());
+
+    // 5. State dir
     let state_dir = dirs::data_local_dir()
         .context("no data dir")?
         .join("cwinner");
     std::fs::create_dir_all(&state_dir)?;
 
-    // 5. Systemd / launchd
+    // 6. Systemd / launchd
     register_service(binary_str)?;
 
     println!("\n🎉 cwinner nainstalován! Spusť: cwinner status");
@@ -275,5 +281,14 @@ mod tests {
             .filter(|h| h["cmd"].as_str().map(|s| s.contains("cwinner")).unwrap_or(false))
             .count();
         assert_eq!(cwinner_count, 1);
+    }
+
+    #[test]
+    fn test_install_creates_wav_sounds() {
+        let tmp = tempdir().unwrap();
+        let sounds_dir = tmp.path().join("sounds/default");
+        crate::sounds::extract_all_sounds(&sounds_dir).unwrap();
+        assert!(sounds_dir.join("mini.wav").exists());
+        assert!(sounds_dir.join("epic.wav").exists());
     }
 }

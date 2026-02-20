@@ -1,5 +1,6 @@
 use crate::celebration::CelebrationLevel;
-use std::path::PathBuf;
+use crate::config::AudioConfig;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug, Clone)]
@@ -12,12 +13,18 @@ pub enum SoundKind {
 }
 
 pub fn sound_file_for_level(kind: &SoundKind) -> &'static str {
-    match kind {
-        SoundKind::Mini => "mini",
-        SoundKind::Milestone => "milestone",
-        SoundKind::Epic => "epic",
-        SoundKind::Fanfare => "fanfare",
-        SoundKind::Streak => "streak",
+    kind.name()
+}
+
+impl SoundKind {
+    pub fn name(&self) -> &'static str {
+        match self {
+            SoundKind::Mini      => "mini",
+            SoundKind::Milestone => "milestone",
+            SoundKind::Epic      => "epic",
+            SoundKind::Fanfare   => "fanfare",
+            SoundKind::Streak    => "streak",
+        }
     }
 }
 
@@ -66,14 +73,17 @@ pub fn detect_player() -> Option<Player> {
 
 pub fn play_sound(kind: &SoundKind, sound_pack: &str) {
     let Some(player) = detect_player() else { return };
-    let Some(sound_dir) = dirs::config_dir()
-        .map(|d| d.join("cwinner").join("sounds").join(sound_pack))
-    else {
-        return;
+    let sounds_dir = dirs::config_dir()
+        .map(|d| d.join("cwinner").join("sounds"))
+        .unwrap_or_else(|| PathBuf::from("/tmp/cwinner/sounds"));
+
+    let cfg = AudioConfig {
+        enabled: true,
+        sound_pack: sound_pack.to_string(),
+        volume: 0.8,
     };
 
-    let base = sound_file_for_level(kind);
-    let Some(path) = find_sound_file(&sound_dir, base) else { return };
+    let Some(path) = find_sound_file(kind, &cfg, &sounds_dir) else { return };
 
     let path_str = match path.to_str() {
         Some(s) => s.to_string(),
@@ -91,14 +101,17 @@ pub fn play_sound(kind: &SoundKind, sound_pack: &str) {
     let _ = Command::new(cmd).args(&args).spawn();
 }
 
-fn find_sound_file(dir: &PathBuf, base: &str) -> Option<PathBuf> {
-    for ext in &["ogg", "wav", "mp3"] {
-        let p = dir.join(format!("{}.{}", base, ext));
+pub fn find_sound_file(kind: &SoundKind, cfg: &AudioConfig, sounds_dir: &Path) -> Option<PathBuf> {
+    let pack_dir = sounds_dir.join(&cfg.sound_pack);
+    let name = kind.name();
+    for ext in ["ogg", "wav", "mp3"] {
+        let p = pack_dir.join(format!("{name}.{ext}"));
         if p.exists() {
             return Some(p);
         }
     }
-    None
+    // Fallback: generate WAV to /tmp/cwinner/
+    crate::sounds::ensure_sound_file(kind).ok()
 }
 
 #[cfg(test)]
@@ -117,5 +130,19 @@ mod tests {
         assert_eq!(sound_file_for_level(&SoundKind::Epic), "epic");
         assert_eq!(sound_file_for_level(&SoundKind::Fanfare), "fanfare");
         assert_eq!(sound_file_for_level(&SoundKind::Streak), "streak");
+    }
+
+    #[test]
+    fn test_play_sound_generates_wav_when_no_pack() {
+        // Provide a non-existent sound pack dir
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = AudioConfig {
+            enabled: true,
+            sound_pack: "nonexistent".to_string(),
+            volume: 0.8,
+        };
+        // Should not panic/error even with no sound files
+        let result = find_sound_file(&SoundKind::Mini, &cfg, tmp.path());
+        assert!(result.is_some(), "should fall back to generated WAV");
     }
 }

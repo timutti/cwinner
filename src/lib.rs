@@ -4,5 +4,6 @@ pub mod state;
 pub mod celebration;
 pub mod renderer;
 pub mod audio;
+pub mod sounds;
 pub mod install;
 pub mod daemon;
