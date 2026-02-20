@@ -3,7 +3,7 @@ use crate::state::State;
 use crossterm::{
     cursor, execute, queue,
     style::{Color, Print, ResetColor, SetForegroundColor},
-    terminal::{self, Clear, ClearType},
+    terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use rand::Rng;
 use std::fs::OpenOptions;
@@ -83,7 +83,7 @@ pub fn render_confetti(tty_path: &str) -> io::Result<()> {
     let frames = 15u64;
     let frame_ms = 1500 / frames;
 
-    execute!(tty, cursor::SavePosition, cursor::Hide)?;
+    execute!(tty, EnterAlternateScreen, cursor::Hide)?;
 
     for _ in 0..frames {
         for _ in 0..(cols / 4) {
@@ -101,7 +101,7 @@ pub fn render_confetti(tty_path: &str) -> io::Result<()> {
         thread::sleep(Duration::from_millis(frame_ms));
     }
 
-    execute!(tty, Clear(ClearType::All), cursor::Show, cursor::RestorePosition, ResetColor)
+    Ok(())
 }
 
 pub fn render_splash(tty_path: &str, state: &State, achievement: &str) -> io::Result<()> {
@@ -109,7 +109,8 @@ pub fn render_splash(tty_path: &str, state: &State, achievement: &str) -> io::Re
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
     let mid_row = rows / 2;
 
-    execute!(tty, cursor::SavePosition, cursor::Hide, Clear(ClearType::All))?;
+    // Clear alternate screen for splash (confetti already entered alternate screen)
+    execute!(tty, Clear(ClearType::All), cursor::Hide)?;
 
     let inner_width = (cols as usize).saturating_sub(2);
     let border = "═".repeat(inner_width);
@@ -139,7 +140,8 @@ pub fn render_splash(tty_path: &str, state: &State, achievement: &str) -> io::Re
     )?;
     tty.flush()?;
     thread::sleep(Duration::from_millis(2000));
-    execute!(tty, Clear(ClearType::All), cursor::Show, cursor::RestorePosition, ResetColor)
+    // Leave alternate screen — original terminal content is restored
+    execute!(tty, cursor::Show, LeaveAlternateScreen, ResetColor)
 }
 
 #[cfg(test)]
