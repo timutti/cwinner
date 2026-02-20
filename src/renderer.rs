@@ -102,7 +102,7 @@ pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) ->
 
     thread::sleep(Duration::from_millis(duration));
 
-    execute!(tty, cursor::Show, LeaveAlternateScreen)
+    execute!(tty, LeaveAlternateScreen)
 }
 
 pub fn render_confetti(tty_path: &str) -> io::Result<()> {
