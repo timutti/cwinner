@@ -43,9 +43,9 @@ pub static REGISTRY: &[Achievement] = &[
 ];
 
 /// Returns achievements newly unlocked by this event (not already in state.achievements_unlocked).
-pub fn check_achievements<'a>(state: &State, event: &Event) -> Vec<&'a Achievement> {
+pub fn check_achievements(state: &State, event: &Event) -> Vec<&'static Achievement> {
     REGISTRY.iter()
-        .filter(|a| !state.achievements_unlocked.contains(&a.id.to_string()))
+        .filter(|a| !state.achievements_unlocked.iter().any(|id| id == a.id))
         .filter(|a| is_unlocked(a, state, event))
         .collect()
 }
@@ -64,7 +64,11 @@ fn is_unlocked(a: &Achievement, state: &State, event: &Event) -> bool {
         "test_whisperer" => {
             event.event == EventKind::PostToolUse
                 && tool == "Bash"
-                && state.last_bash_exit.map(|c| c == 0).unwrap_or(false)
+                && event.metadata.get("exit_code")
+                    .and_then(|v| v.as_i64())
+                    .map(|c| c == 0)
+                    .unwrap_or(false)
+                && state.last_bash_exit.map(|c| c != 0).unwrap_or(false)
         }
         "tool_explorer" => state.tools_used.len() >= 5,
         "tool_master"   => state.tools_used.len() >= 10,
@@ -171,5 +175,163 @@ mod tests {
         let a = REGISTRY.iter().find(|a| a.id == "first_commit").unwrap();
         assert!(!a.name.is_empty());
         assert!(!a.description.is_empty());
+    }
+
+    #[test]
+    fn test_commit_10_unlocks() {
+        let mut s = State::default();
+        s.commits_total = 10;
+        let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
+        assert!(unlocked.iter().any(|a| a.id == "commit_10"));
+    }
+
+    #[test]
+    fn test_commit_50_unlocks() {
+        let mut s = State::default();
+        s.commits_total = 50;
+        let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
+        assert!(unlocked.iter().any(|a| a.id == "commit_50"));
+    }
+
+    #[test]
+    fn test_commit_100_unlocks() {
+        let mut s = State::default();
+        s.commits_total = 100;
+        let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
+        assert!(unlocked.iter().any(|a| a.id == "commit_100"));
+    }
+
+    #[test]
+    fn test_streak_10_unlocks() {
+        let mut s = State::default();
+        s.commit_streak_days = 10;
+        let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
+        assert!(unlocked.iter().any(|a| a.id == "streak_10"));
+    }
+
+    #[test]
+    fn test_streak_25_unlocks() {
+        let mut s = State::default();
+        s.commit_streak_days = 25;
+        let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
+        assert!(unlocked.iter().any(|a| a.id == "streak_25"));
+    }
+
+    #[test]
+    fn test_first_push_unlocks_on_git_push() {
+        let s = State::default();
+        let unlocked = check_achievements(&s, &ev(EventKind::GitPush, None));
+        assert!(unlocked.iter().any(|a| a.id == "first_push"));
+    }
+
+    #[test]
+    fn test_test_whisperer_unlocks_on_fail_to_pass() {
+        let mut s = State::default();
+        s.last_bash_exit = Some(1); // previous run failed
+        // current event: Bash exited 0
+        let mut event = ev(EventKind::PostToolUse, Some("Bash"));
+        event.metadata.insert("exit_code".into(), serde_json::json!(0));
+        let unlocked = check_achievements(&s, &event);
+        assert!(unlocked.iter().any(|a| a.id == "test_whisperer"));
+    }
+
+    #[test]
+    fn test_test_whisperer_does_not_unlock_on_pass_to_pass() {
+        let mut s = State::default();
+        s.last_bash_exit = Some(0); // previous run also passed
+        let mut event = ev(EventKind::PostToolUse, Some("Bash"));
+        event.metadata.insert("exit_code".into(), serde_json::json!(0));
+        let unlocked = check_achievements(&s, &event);
+        assert!(!unlocked.iter().any(|a| a.id == "test_whisperer"));
+    }
+
+    #[test]
+    fn test_tool_master_at_10_tools() {
+        let mut s = State::default();
+        for t in ["Bash", "Read", "Write", "Glob", "Task", "Edit", "Grep", "WebSearch", "WebFetch", "TodoWrite"] {
+            s.tools_used.insert(t.into());
+        }
+        let unlocked = check_achievements(&s, &ev(EventKind::PostToolUse, Some("Bash")));
+        assert!(unlocked.iter().any(|a| a.id == "tool_master"));
+    }
+
+    #[test]
+    fn test_level_3_unlocks() {
+        let mut s = State::default();
+        s.level = 3;
+        let unlocked = check_achievements(&s, &ev(EventKind::TaskCompleted, None));
+        assert!(unlocked.iter().any(|a| a.id == "level_3"));
+    }
+
+    #[test]
+    fn test_level_4_unlocks() {
+        let mut s = State::default();
+        s.level = 4;
+        let unlocked = check_achievements(&s, &ev(EventKind::TaskCompleted, None));
+        assert!(unlocked.iter().any(|a| a.id == "level_4"));
+    }
+
+    #[test]
+    fn test_level_5_unlocks() {
+        let mut s = State::default();
+        s.level = 5;
+        let unlocked = check_achievements(&s, &ev(EventKind::TaskCompleted, None));
+        assert!(unlocked.iter().any(|a| a.id == "level_5"));
+    }
+
+    #[test]
+    fn test_web_surfer_unlocks_on_websearch() {
+        let mut s = State::default();
+        s.tools_used.insert("WebSearch".into());
+        let unlocked = check_achievements(&s, &ev(EventKind::PostToolUse, Some("WebSearch")));
+        assert!(unlocked.iter().any(|a| a.id == "web_surfer"));
+    }
+
+    #[test]
+    fn test_researcher_unlocks_on_webfetch() {
+        let mut s = State::default();
+        s.tools_used.insert("WebFetch".into());
+        let unlocked = check_achievements(&s, &ev(EventKind::PostToolUse, Some("WebFetch")));
+        assert!(unlocked.iter().any(|a| a.id == "researcher"));
+    }
+
+    #[test]
+    fn test_notebook_scientist_unlocks() {
+        let mut s = State::default();
+        s.tools_used.insert("NotebookEdit".into());
+        let unlocked = check_achievements(&s, &ev(EventKind::PostToolUse, Some("NotebookEdit")));
+        assert!(unlocked.iter().any(|a| a.id == "notebook_scientist"));
+    }
+
+    #[test]
+    fn test_todo_master_unlocks() {
+        let mut s = State::default();
+        s.tools_used.insert("TodoWrite".into());
+        let unlocked = check_achievements(&s, &ev(EventKind::PostToolUse, Some("TodoWrite")));
+        assert!(unlocked.iter().any(|a| a.id == "todo_master"));
+    }
+
+    #[test]
+    fn test_first_skill_unlocks() {
+        let mut s = State::default();
+        s.tools_used.insert("Skill".into());
+        let unlocked = check_achievements(&s, &ev(EventKind::PostToolUse, Some("Skill")));
+        assert!(unlocked.iter().any(|a| a.id == "first_skill"));
+    }
+
+    #[test]
+    fn test_first_team_unlocks() {
+        let mut s = State::default();
+        s.tools_used.insert("TeamCreate".into());
+        let unlocked = check_achievements(&s, &ev(EventKind::PostToolUse, Some("TeamCreate")));
+        assert!(unlocked.iter().any(|a| a.id == "first_team"));
+    }
+
+    #[test]
+    fn test_team_communicator_unlocks() {
+        let mut s = State::default();
+        s.tools_used.insert("SendMessage".into());
+        let unlocked = check_achievements(&s, &ev(EventKind::PostToolUse, Some("SendMessage")));
+        assert!(unlocked.iter().any(|a| a.id == "team_communicator"));
     }
 }
