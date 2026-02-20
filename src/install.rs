@@ -84,14 +84,31 @@ pub fn add_claude_hooks(settings_path: &Path, binary: &str) -> Result<()> {
             v["hooks"][hook_name] = serde_json::json!([]);
         }
 
+        // Odstraň staré záznamy formátu {"cmd": "...cwinner..."} (migrační čištění)
+        if let Some(arr) = v["hooks"][hook_name].as_array_mut() {
+            arr.retain(|h| {
+                !h["cmd"]
+                    .as_str()
+                    .map(|s| s.contains("cwinner"))
+                    .unwrap_or(false)
+            });
+        }
+
         // Přidej pouze pokud cwinner hook ještě není
         let already_present = v["hooks"][hook_name]
             .as_array()
             .map(|arr| {
                 arr.iter().any(|h| {
-                    h["cmd"]
-                        .as_str()
-                        .map(|s| s.contains("cwinner"))
+                    h["hooks"]
+                        .as_array()
+                        .map(|inner| {
+                            inner.iter().any(|e| {
+                                e["command"]
+                                    .as_str()
+                                    .map(|s| s.contains("cwinner"))
+                                    .unwrap_or(false)
+                            })
+                        })
                         .unwrap_or(false)
                 })
             })
@@ -101,7 +118,9 @@ pub fn add_claude_hooks(settings_path: &Path, binary: &str) -> Result<()> {
             v["hooks"][hook_name]
                 .as_array_mut()
                 .unwrap()
-                .push(serde_json::json!({"cmd": cmd}));
+                .push(serde_json::json!({
+                    "hooks": [{"type": "command", "command": cmd}]
+                }));
         }
     }
 
@@ -278,7 +297,13 @@ mod tests {
         let hooks = v["hooks"]["PostToolUse"].as_array().unwrap();
         let cwinner_count = hooks
             .iter()
-            .filter(|h| h["cmd"].as_str().map(|s| s.contains("cwinner")).unwrap_or(false))
+            .filter(|h| {
+                h["hooks"].as_array().map(|inner| {
+                    inner.iter().any(|e| {
+                        e["command"].as_str().map(|s| s.contains("cwinner")).unwrap_or(false)
+                    })
+                }).unwrap_or(false)
+            })
             .count();
         assert_eq!(cwinner_count, 1);
     }
