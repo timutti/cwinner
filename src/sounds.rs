@@ -6,11 +6,11 @@ use anyhow::Result;
 /// Frequencies and durations for each sound type
 fn params(kind: &SoundKind) -> (f32, f32) {
     match kind {
-        SoundKind::Mini      => (880.0, 0.15),  // A5, short blip
-        SoundKind::Milestone => (523.25, 0.4),  // C5, medium chime
-        SoundKind::Epic      => (659.25, 0.6),  // E5, triumphant
-        SoundKind::Fanfare   => (783.99, 0.8),  // G5, fanfare
-        SoundKind::Streak    => (1046.5, 1.0),  // C6, streak celebration
+        SoundKind::Mini      => (880.0, 0.3),   // A5, short blip
+        SoundKind::Milestone => (523.25, 0.8),   // C5, medium chime
+        SoundKind::Epic      => (659.25, 1.2),   // E5, triumphant
+        SoundKind::Fanfare   => (783.99, 1.5),   // G5, fanfare
+        SoundKind::Streak    => (1046.5, 1.5),   // C6, streak celebration
     }
 }
 
@@ -24,7 +24,7 @@ pub fn generate_wav(kind: &SoundKind) -> Vec<u8> {
         let t = i as f32 / sample_rate as f32;
         // Sine wave with linear fade-out envelope
         let envelope = 1.0 - (t / duration);
-        let sample = (envelope * 0.6 * i16::MAX as f32
+        let sample = (envelope * 0.95 * i16::MAX as f32
             * (2.0 * std::f32::consts::PI * freq * t).sin()) as i16;
         samples.push(sample);
     }
