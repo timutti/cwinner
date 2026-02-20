@@ -43,12 +43,25 @@ pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achieveme
     }
 }
 
-fn open_tty(tty_path: &str) -> io::Result<impl Write> {
+fn open_tty(tty_path: &str) -> io::Result<std::fs::File> {
     OpenOptions::new().write(true).open(tty_path)
+}
+
+fn tty_size(tty: &std::fs::File) -> (u16, u16) {
+    use std::os::unix::io::AsRawFd;
+    let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
+    let ret = unsafe { libc::ioctl(tty.as_raw_fd(), libc::TIOCGWINSZ, &mut ws) };
+    if ret == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
+        (ws.ws_col, ws.ws_row)
+    } else {
+        (80, 24)
+    }
 }
 
 pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
     let mut tty = open_tty(tty_path)?;
+    let (_, rows) = tty_size(&tty);
+    let bottom = rows.saturating_sub(1);
     let level_idx = (state.level.saturating_sub(1)) as usize;
     let prev_threshold = LEVEL_THRESHOLDS.get(level_idx).copied().unwrap_or(0);
     let next_xp = xp_for_next_level(state.level);
@@ -58,7 +71,7 @@ pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
 
     queue!(tty,
         cursor::SavePosition,
-        cursor::MoveTo(0, terminal::size().map(|s| s.1.saturating_sub(1)).unwrap_or(24)),
+        cursor::MoveTo(0, bottom),
         Clear(ClearType::CurrentLine),
         SetForegroundColor(Color::Cyan),
         Print(format!(" ⚡ {} │ {} │ {} XP ", state.level_name, bar, state.xp)),
@@ -69,7 +82,7 @@ pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
     thread::sleep(Duration::from_millis(3000));
     queue!(tty,
         cursor::SavePosition,
-        cursor::MoveTo(0, terminal::size().map(|s| s.1.saturating_sub(1)).unwrap_or(24)),
+        cursor::MoveTo(0, bottom),
         Clear(ClearType::CurrentLine),
         cursor::RestorePosition,
     )?;
@@ -79,7 +92,7 @@ pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
 pub fn render_confetti(tty_path: &str) -> io::Result<()> {
     let mut tty = open_tty(tty_path)?;
     let mut rng = rand::thread_rng();
-    let (cols, rows) = terminal::size().unwrap_or((80, 24));
+    let (cols, rows) = tty_size(&tty);
     let frames = 15u64;
     let frame_ms = 1500 / frames;
 
@@ -106,7 +119,7 @@ pub fn render_confetti(tty_path: &str) -> io::Result<()> {
 
 pub fn render_splash(tty_path: &str, state: &State, achievement: &str) -> io::Result<()> {
     let mut tty = open_tty(tty_path)?;
-    let (cols, rows) = terminal::size().unwrap_or((80, 24));
+    let (cols, rows) = tty_size(&tty);
     let mid_row = rows / 2;
 
     // Clear alternate screen for splash (confetti already entered alternate screen)
