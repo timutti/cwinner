@@ -74,14 +74,14 @@ fn main() {
         }
         Commands::Stats => {
             let s = State::load();
-            let next_xp = cwinner_lib::renderer::xp_for_next_level(s.level);
-            let level_idx = (s.level.saturating_sub(1)) as usize;
-            let prev_threshold = cwinner_lib::renderer::LEVEL_THRESHOLDS
-                .get(level_idx)
+            let level_idx = (s.level as usize).saturating_sub(1);
+            let prev_xp = cwinner_lib::renderer::LEVEL_THRESHOLDS
+                .get(level_idx.saturating_sub(1))
                 .copied()
                 .unwrap_or(0);
-            let xp_in_level = s.xp.saturating_sub(prev_threshold);
-            let xp_needed = next_xp.saturating_sub(prev_threshold);
+            let next_xp = cwinner_lib::renderer::xp_for_next_level(s.level);
+            let xp_in_level = s.xp.saturating_sub(prev_xp);
+            let xp_needed = next_xp.saturating_sub(prev_xp);
             let bar = cwinner_lib::renderer::xp_bar_string(xp_in_level, xp_needed, 20);
 
             println!("Stats:");
@@ -92,6 +92,10 @@ fn main() {
             println!();
 
             let unlocked = &s.achievements_unlocked;
+            // Build HashSet once for O(1) lookups
+            let unlocked_set: std::collections::HashSet<&str> =
+                unlocked.iter().map(|s| s.as_str()).collect();
+
             if unlocked.is_empty() {
                 println!("Achievements: none yet");
             } else {
@@ -107,7 +111,7 @@ fn main() {
 
             println!();
             let locked: Vec<_> = cwinner_lib::achievements::REGISTRY.iter()
-                .filter(|a| !unlocked.iter().any(|id| id == a.id))
+                .filter(|a| !unlocked_set.contains(a.id))
                 .collect();
             if !locked.is_empty() {
                 println!("Locked ({}):", locked.len());
