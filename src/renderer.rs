@@ -33,8 +33,7 @@ pub fn xp_for_next_level(level: u32) -> u32 {
 
 pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achievement: Option<&str>) {
     match level {
-        CelebrationLevel::Off => {}
-        CelebrationLevel::Mini => {} // silent XP gain
+        CelebrationLevel::Off | CelebrationLevel::Mini => {}
         CelebrationLevel::Medium => { let _ = render_toast(tty_path, state, achievement); }
         CelebrationLevel::Epic => {
             let _ = render_confetti(tty_path);
@@ -58,13 +57,13 @@ fn tty_size(tty: &std::fs::File) -> (u16, u16) {
     }
 }
 
-pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) -> io::Result<()> {
-    let mut tty = open_tty(tty_path)?;
-    let (_, rows) = tty_size(&tty);
-    let bottom = rows.saturating_sub(1);
-
-    let msg = if let Some(name) = achievement {
-        format!(" 🏆 {} │ {} │ {} XP ", name, state.level_name, state.xp)
+/// Format the toast message line for display.
+pub fn format_toast_msg(state: &State, achievement: Option<&str>) -> (String, Color) {
+    if let Some(name) = achievement {
+        (
+            format!("🏆 {} │ {} │ {} XP", name, state.level_name, state.xp),
+            Color::Yellow,
+        )
     } else {
         let level_idx = (state.level.saturating_sub(1)) as usize;
         let prev_threshold = LEVEL_THRESHOLDS.get(level_idx).copied().unwrap_or(0);
@@ -72,62 +71,38 @@ pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) ->
         let xp_in_level = state.xp.saturating_sub(prev_threshold);
         let xp_needed = next_xp.saturating_sub(prev_threshold);
         let bar = xp_bar_string(xp_in_level, xp_needed, 15);
-        format!(" ⚡ {} │ {} │ {} XP ", state.level_name, bar, state.xp)
-    };
+        (
+            format!("⚡ {} │ {} │ {} XP", state.level_name, bar, state.xp),
+            Color::Cyan,
+        )
+    }
+}
 
-    let color = if achievement.is_some() { Color::Yellow } else { Color::Cyan };
-    let duration = if achievement.is_some() { 2500u64 } else { 1500u64 };
+/// Brief alternate screen overlay — the only safe way to display in a terminal
+/// managed by Claude Code's differential renderer without corrupting its state.
+pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) -> io::Result<()> {
+    let mut tty = open_tty(tty_path)?;
+    let (cols, rows) = tty_size(&tty);
+    let (msg, color) = format_toast_msg(state, achievement);
+    let duration = if achievement.is_some() { 1500u64 } else { 800u64 };
+
+    let mid_row = rows / 2;
+    let msg_display = format!(" {} ", msg);
+    let pad_width = (cols as usize).saturating_sub(2);
+
+    execute!(tty, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All))?;
 
     queue!(tty,
-        cursor::SavePosition,
-        cursor::Hide,
-        cursor::MoveTo(0, bottom),
-        Clear(ClearType::CurrentLine),
+        cursor::MoveTo(0, mid_row),
         SetForegroundColor(color),
-        Print(&msg),
+        Print(format!("{:^width$}", msg_display, width = pad_width)),
         ResetColor,
-        cursor::RestorePosition,
     )?;
     tty.flush()?;
 
     thread::sleep(Duration::from_millis(duration));
 
-    queue!(tty,
-        cursor::MoveTo(0, bottom),
-        Clear(ClearType::CurrentLine),
-    )?;
-    tty.flush()
-}
-
-pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
-    let mut tty = open_tty(tty_path)?;
-    let (_, rows) = tty_size(&tty);
-    let bottom = rows.saturating_sub(1);
-    let level_idx = (state.level.saturating_sub(1)) as usize;
-    let prev_threshold = LEVEL_THRESHOLDS.get(level_idx).copied().unwrap_or(0);
-    let next_xp = xp_for_next_level(state.level);
-    let xp_in_level = state.xp.saturating_sub(prev_threshold);
-    let xp_needed = next_xp.saturating_sub(prev_threshold);
-    let bar = xp_bar_string(xp_in_level, xp_needed, 20);
-
-    queue!(tty,
-        cursor::SavePosition,
-        cursor::MoveTo(0, bottom),
-        Clear(ClearType::CurrentLine),
-        SetForegroundColor(Color::Cyan),
-        Print(format!(" ⚡ {} │ {} │ {} XP ", state.level_name, bar, state.xp)),
-        ResetColor,
-        cursor::RestorePosition,
-    )?;
-    tty.flush()?;
-    thread::sleep(Duration::from_millis(3000));
-    queue!(tty,
-        cursor::SavePosition,
-        cursor::MoveTo(0, bottom),
-        Clear(ClearType::CurrentLine),
-        cursor::RestorePosition,
-    )?;
-    tty.flush()
+    execute!(tty, cursor::Show, LeaveAlternateScreen)
 }
 
 pub fn render_confetti(tty_path: &str) -> io::Result<()> {
@@ -163,7 +138,6 @@ pub fn render_splash(tty_path: &str, state: &State, achievement: &str) -> io::Re
     let (cols, rows) = tty_size(&tty);
     let mid_row = rows / 2;
 
-    // Clear alternate screen for splash (confetti already entered alternate screen)
     execute!(tty, Clear(ClearType::All), cursor::Hide)?;
 
     let inner_width = (cols as usize).saturating_sub(2);
@@ -194,13 +168,13 @@ pub fn render_splash(tty_path: &str, state: &State, achievement: &str) -> io::Re
     )?;
     tty.flush()?;
     thread::sleep(Duration::from_millis(2000));
-    // Leave alternate screen — original terminal content is restored
     execute!(tty, cursor::Show, LeaveAlternateScreen, ResetColor)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::State;
 
     #[test]
     fn test_xp_bar_empty() {
@@ -227,5 +201,32 @@ mod tests {
         assert_eq!(xp_for_next_level(1), 100);
         assert_eq!(xp_for_next_level(2), 500);
         assert_eq!(xp_for_next_level(3), 1500);
+    }
+
+    #[test]
+    fn test_format_toast_msg_regular() {
+        let mut state = State::default();
+        state.xp = 250;
+        state.level = 2;
+        state.level_name = "Prompt Whisperer".into();
+        let (msg, color) = format_toast_msg(&state, None);
+        assert!(msg.contains("Prompt Whisperer"));
+        assert!(msg.contains("250 XP"));
+        assert!(msg.contains('█') || msg.contains('░'));
+        assert_eq!(color, Color::Cyan);
+    }
+
+    #[test]
+    fn test_format_toast_msg_achievement() {
+        let mut state = State::default();
+        state.xp = 500;
+        state.level = 3;
+        state.level_name = "Vibe Architect".into();
+        let (msg, color) = format_toast_msg(&state, Some("First Commit"));
+        assert!(msg.contains("🏆"));
+        assert!(msg.contains("First Commit"));
+        assert!(msg.contains("Vibe Architect"));
+        assert!(msg.contains("500 XP"));
+        assert_eq!(color, Color::Yellow);
     }
 }
