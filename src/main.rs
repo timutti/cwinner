@@ -151,14 +151,29 @@ fn main() {
 }
 
 fn get_tty() -> String {
-    // Linux: /proc/self/fd/0 je symlink na TTY
-    if let Ok(path) = std::fs::read_link("/proc/self/fd/0") {
-        let s = path.to_string_lossy().to_string();
-        if s.starts_with("/dev/") {
-            return s;
+    // Claude Code hooks: stdin je pipe (JSON), ale stderr/stdout mohou být TTY
+    for fd in [2, 1, 0] {
+        if let Ok(path) = std::fs::read_link(format!("/proc/self/fd/{}", fd)) {
+            let s = path.to_string_lossy().to_string();
+            if s.starts_with("/dev/pts/") {
+                return s;
+            }
         }
     }
-    // macOS fallback: použij /dev/tty
+    // Zkus rodičovský proces (Claude Code)
+    if let Ok(stat) = std::fs::read_to_string("/proc/self/stat") {
+        if let Some(ppid) = stat.split(") ").last().and_then(|s| s.split_whitespace().nth(1)) {
+            for fd in [0, 1, 2] {
+                if let Ok(path) = std::fs::read_link(format!("/proc/{}/fd/{}", ppid, fd)) {
+                    let s = path.to_string_lossy().to_string();
+                    if s.starts_with("/dev/pts/") {
+                        return s;
+                    }
+                }
+            }
+        }
+    }
+    // macOS fallback
     if std::path::Path::new("/dev/tty").exists() {
         return "/dev/tty".into();
     }

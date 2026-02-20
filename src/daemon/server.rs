@@ -74,7 +74,7 @@ async fn handle_connection(
     // Eventy — fire-and-forget
     if let Ok(event) = serde_json::from_str::<Event>(line) {
         let tty_path = event.tty_path.clone();
-        let (level, celebration_name) = {
+        let (level, achievement_name) = {
             let mut s = state.lock().unwrap();
             let level = decide(&event, &s, &cfg);
             let xp = xp_for_event(&level, &s);
@@ -89,10 +89,7 @@ async fn handle_connection(
             }
             // Check achievements BEFORE updating last_bash_exit (test_whisperer needs old value)
             let newly_unlocked = check_achievements(&s, &event);
-            let celebration_name = newly_unlocked
-                .first()
-                .map(|a| a.name.to_string())
-                .unwrap_or_else(|| format!("{:?}", event.event));
+            let achievement_name = newly_unlocked.first().map(|a| a.name.to_string());
             for a in &newly_unlocked {
                 s.unlock_achievement(a.id);
             }
@@ -103,7 +100,7 @@ async fn handle_connection(
                 }
             }
             s.save();
-            (level, celebration_name)
+            (level, achievement_name)
         };
 
         if level != CelebrationLevel::Off {
@@ -114,7 +111,7 @@ async fn handle_connection(
                         play_sound(&sound, &cfg2.audio.sound_pack);
                     }
                 }
-                render(&tty_path, &level, &State::load(), Some(&celebration_name));
+                render(&tty_path, &level, &State::load(), achievement_name.as_deref());
             });
         }
     }

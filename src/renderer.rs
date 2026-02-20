@@ -34,8 +34,8 @@ pub fn xp_for_next_level(level: u32) -> u32 {
 pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achievement: Option<&str>) {
     match level {
         CelebrationLevel::Off => {}
-        CelebrationLevel::Mini => { let _ = render_progress_bar(tty_path, state); }
-        CelebrationLevel::Medium => { let _ = render_progress_bar(tty_path, state); }
+        CelebrationLevel::Mini => {} // silent XP gain
+        CelebrationLevel::Medium => { let _ = render_toast(tty_path, state, achievement); }
         CelebrationLevel::Epic => {
             let _ = render_confetti(tty_path);
             let _ = render_splash(tty_path, state, achievement.unwrap_or("ACHIEVEMENT UNLOCKED!"));
@@ -56,6 +56,41 @@ fn tty_size(tty: &std::fs::File) -> (u16, u16) {
     } else {
         (80, 24)
     }
+}
+
+pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) -> io::Result<()> {
+    let mut tty = open_tty(tty_path)?;
+    let (_, rows) = tty_size(&tty);
+
+    let msg = if let Some(name) = achievement {
+        format!(" 🏆 {} │ {} │ {} XP ", name, state.level_name, state.xp)
+    } else {
+        let level_idx = (state.level.saturating_sub(1)) as usize;
+        let prev_threshold = LEVEL_THRESHOLDS.get(level_idx).copied().unwrap_or(0);
+        let next_xp = xp_for_next_level(state.level);
+        let xp_in_level = state.xp.saturating_sub(prev_threshold);
+        let xp_needed = next_xp.saturating_sub(prev_threshold);
+        let bar = xp_bar_string(xp_in_level, xp_needed, 15);
+        format!(" ⚡ {} │ {} │ {} XP ", state.level_name, bar, state.xp)
+    };
+
+    // Use \e7 save, move to absolute bottom row (rows;1), print, \e8 restore
+    let bottom_row = rows;
+    write!(tty, "\x1b7\x1b[{};1H\x1b[2K", bottom_row)?;
+    if achievement.is_some() {
+        write!(tty, "\x1b[33m{}\x1b[0m", msg)?;
+    } else {
+        write!(tty, "\x1b[36m{}\x1b[0m", msg)?;
+    }
+    write!(tty, "\x1b8")?;
+    tty.flush()?;
+
+    let duration = if achievement.is_some() { 2500 } else { 1500 };
+    thread::sleep(Duration::from_millis(duration));
+
+    // Clear the toast
+    write!(tty, "\x1b7\x1b[{};1H\x1b[2K\x1b8", bottom_row)?;
+    tty.flush()
 }
 
 pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
