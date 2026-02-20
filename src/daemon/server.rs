@@ -74,33 +74,13 @@ async fn handle_connection(
     // Eventy — fire-and-forget
     if let Ok(event) = serde_json::from_str::<Event>(line) {
         let tty_path = event.tty_path.clone();
-        let (level, achievement_name) = {
-            let mut s = state.lock().unwrap();
-            let level = decide(&event, &s, &cfg);
-            let xp = xp_for_event(&level, &s);
-            if xp > 0 {
-                s.add_xp(xp);
-            }
-            if event.event == EventKind::GitCommit {
-                s.record_commit();
-            }
-            if let Some(tool) = &event.tool {
-                s.record_tool_use(tool);
-            }
-            // Check achievements BEFORE updating last_bash_exit (test_whisperer needs old value)
-            let newly_unlocked = check_achievements(&s, &event);
-            let achievement_name = newly_unlocked.first().map(|a| a.name.to_string());
-            for a in &newly_unlocked {
-                s.unlock_achievement(a.id);
-            }
-            // Update last_bash_exit AFTER achievements checked
-            if event.event == EventKind::PostToolUse {
-                if let Some(code) = event.metadata.get("exit_code").and_then(|v| v.as_i64()) {
-                    s.last_bash_exit = Some(code as i32);
-                }
-            }
+        // Process event under a single mutex lock, then clone state for rendering
+        let (level, achievement_name, state_snapshot) = {
+            let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+            let (level, achievement_name) = process_event_with_state(&event, &mut s, &cfg);
             s.save();
-            (level, achievement_name)
+            let snapshot = s.clone();
+            (level, achievement_name, snapshot)
         };
 
         if level != CelebrationLevel::Off {
@@ -111,7 +91,7 @@ async fn handle_connection(
                         play_sound(&sound, &cfg2.audio.sound_pack);
                     }
                 }
-                render(&tty_path, &level, &State::load(), achievement_name.as_deref());
+                render(&tty_path, &level, &state_snapshot, achievement_name.as_deref());
             });
         }
     }
@@ -119,12 +99,15 @@ async fn handle_connection(
     Ok(())
 }
 
+/// Process an event against the given state, returning the celebration level
+/// and optionally the name of a newly unlocked achievement.
+///
+/// The caller is responsible for saving state and rendering visuals.
 pub fn process_event_with_state(
     event: &Event,
     state: &mut State,
     cfg: &Config,
-    render_visual: bool,
-) {
+) -> (CelebrationLevel, Option<String>) {
     let level = decide(event, state, cfg);
     let xp = xp_for_event(&level, state);
     if xp > 0 {
@@ -136,8 +119,9 @@ pub fn process_event_with_state(
     if let Some(tool) = &event.tool {
         state.record_tool_use(tool);
     }
-    // Check achievements BEFORE updating last_bash_exit
+    // Check achievements BEFORE updating last_bash_exit (test_whisperer needs old value)
     let newly_unlocked = check_achievements(state, event);
+    let achievement_name = newly_unlocked.first().map(|a| a.name.to_string());
     for a in &newly_unlocked {
         state.unlock_achievement(a.id);
     }
@@ -147,14 +131,11 @@ pub fn process_event_with_state(
             state.last_bash_exit = Some(code as i32);
         }
     }
-    if render_visual && level != CelebrationLevel::Off {
-        let name = newly_unlocked.first().map(|a| a.name.to_string());
-        render(&event.tty_path, &level, state, name.as_deref());
-    }
+    (level, achievement_name)
 }
 
 fn handle_command(cmd: &DaemonCommand, state: &Arc<Mutex<State>>) -> DaemonResponse {
-    let s = state.lock().unwrap();
+    let s = state.lock().unwrap_or_else(|e| e.into_inner());
     match cmd {
         DaemonCommand::Status => DaemonResponse {
             ok: true,
@@ -192,7 +173,7 @@ mod tests {
         let mut state = crate::state::State::default();
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::TaskCompleted);
-        process_event_with_state(&event, &mut state, &cfg, false);
+        process_event_with_state(&event, &mut state, &cfg);
         assert!(state.xp > 0);
     }
 
@@ -201,7 +182,7 @@ mod tests {
         let mut state = crate::state::State::default();
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::GitCommit);
-        process_event_with_state(&event, &mut state, &cfg, false);
+        process_event_with_state(&event, &mut state, &cfg);
         assert_eq!(state.commits_total, 1);
     }
 
@@ -211,7 +192,7 @@ mod tests {
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::GitCommit);
 
-        process_event_with_state(&event, &mut state, &cfg, false);
+        process_event_with_state(&event, &mut state, &cfg);
 
         assert!(state.achievements_unlocked.iter().any(|id| id == "first_commit"));
     }
@@ -223,7 +204,7 @@ mod tests {
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::TaskCompleted); // adds 25 XP → level 2
 
-        process_event_with_state(&event, &mut state, &cfg, false);
+        process_event_with_state(&event, &mut state, &cfg);
 
         assert!(state.achievements_unlocked.iter().any(|id| id == "level_2"));
     }
@@ -235,7 +216,7 @@ mod tests {
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::TaskCompleted);
 
-        process_event_with_state(&event, &mut state, &cfg, false);
+        process_event_with_state(&event, &mut state, &cfg);
 
         // 25 XP * 2 streak bonus = 50 XP
         assert_eq!(state.xp, 50);
