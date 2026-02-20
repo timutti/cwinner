@@ -1,5 +1,6 @@
 use crate::audio::{celebration_to_sound, play_sound};
-use crate::celebration::{decide, xp_for_level, CelebrationLevel};
+use crate::achievements::check_achievements;
+use crate::celebration::{decide, xp_for_event, CelebrationLevel};
 use crate::config::Config;
 use crate::event::{DaemonCommand, DaemonResponse, Event, EventKind};
 use crate::renderer::render;
@@ -73,10 +74,10 @@ async fn handle_connection(
     // Eventy — fire-and-forget
     if let Ok(event) = serde_json::from_str::<Event>(line) {
         let tty_path = event.tty_path.clone();
-        let (level, achievement) = {
+        let (level, celebration_name) = {
             let mut s = state.lock().unwrap();
             let level = decide(&event, &s, &cfg);
-            let xp = xp_for_level(&level);
+            let xp = xp_for_event(&level, &s);
             if xp > 0 {
                 s.add_xp(xp);
             }
@@ -86,18 +87,23 @@ async fn handle_connection(
             if let Some(tool) = &event.tool {
                 s.record_tool_use(tool);
             }
+            // Check achievements BEFORE updating last_bash_exit (test_whisperer needs old value)
+            let newly_unlocked = check_achievements(&s, &event);
+            let celebration_name = newly_unlocked
+                .first()
+                .map(|a| a.name.to_string())
+                .unwrap_or_else(|| format!("{:?}", event.event));
+            for a in &newly_unlocked {
+                s.unlock_achievement(a.id);
+            }
+            // Update last_bash_exit AFTER achievements checked
             if event.event == EventKind::PostToolUse {
-                if let Some(code) = event
-                    .metadata
-                    .get("exit_code")
-                    .and_then(|v| v.as_i64())
-                {
+                if let Some(code) = event.metadata.get("exit_code").and_then(|v| v.as_i64()) {
                     s.last_bash_exit = Some(code as i32);
                 }
             }
             s.save();
-            let achievement = format!("{:?}", event.event);
-            (level, achievement)
+            (level, celebration_name)
         };
 
         if level != CelebrationLevel::Off {
@@ -108,7 +114,7 @@ async fn handle_connection(
                         play_sound(&sound, &cfg2.audio.sound_pack);
                     }
                 }
-                render(&tty_path, &level, &State::load(), Some(&achievement));
+                render(&tty_path, &level, &State::load(), Some(&celebration_name));
             });
         }
     }
@@ -123,7 +129,7 @@ pub fn process_event_with_state(
     render_visual: bool,
 ) {
     let level = decide(event, state, cfg);
-    let xp = xp_for_level(&level);
+    let xp = xp_for_event(&level, state);
     if xp > 0 {
         state.add_xp(xp);
     }
@@ -133,8 +139,20 @@ pub fn process_event_with_state(
     if let Some(tool) = &event.tool {
         state.record_tool_use(tool);
     }
+    // Check achievements BEFORE updating last_bash_exit
+    let newly_unlocked = check_achievements(state, event);
+    for a in &newly_unlocked {
+        state.unlock_achievement(a.id);
+    }
+    // Update last_bash_exit AFTER achievements checked
+    if event.event == EventKind::PostToolUse {
+        if let Some(code) = event.metadata.get("exit_code").and_then(|v| v.as_i64()) {
+            state.last_bash_exit = Some(code as i32);
+        }
+    }
     if render_visual && level != CelebrationLevel::Off {
-        render(&event.tty_path, &level, state, None);
+        let name = newly_unlocked.first().map(|a| a.name.to_string());
+        render(&event.tty_path, &level, state, name.as_deref());
     }
 }
 
@@ -188,5 +206,41 @@ mod tests {
         let event = make_event(EventKind::GitCommit);
         process_event_with_state(&event, &mut state, &cfg, false);
         assert_eq!(state.commits_total, 1);
+    }
+
+    #[test]
+    fn test_first_commit_achievement_fires() {
+        let mut state = crate::state::State::default();
+        let cfg = crate::config::Config::default();
+        let event = make_event(EventKind::GitCommit);
+
+        process_event_with_state(&event, &mut state, &cfg, false);
+
+        assert!(state.achievements_unlocked.iter().any(|id| id == "first_commit"));
+    }
+
+    #[test]
+    fn test_level_up_achievement_fires() {
+        let mut state = crate::state::State::default();
+        state.xp = 95; // just below level 2 (100 XP)
+        let cfg = crate::config::Config::default();
+        let event = make_event(EventKind::TaskCompleted); // adds 25 XP → level 2
+
+        process_event_with_state(&event, &mut state, &cfg, false);
+
+        assert!(state.achievements_unlocked.iter().any(|id| id == "level_2"));
+    }
+
+    #[test]
+    fn test_streak_bonus_applied_in_process_event() {
+        let mut state = crate::state::State::default();
+        state.commit_streak_days = 5;
+        let cfg = crate::config::Config::default();
+        let event = make_event(EventKind::TaskCompleted);
+
+        process_event_with_state(&event, &mut state, &cfg, false);
+
+        // 25 XP * 2 streak bonus = 50 XP
+        assert_eq!(state.xp, 50);
     }
 }
