@@ -63,6 +63,16 @@ pub fn xp_for_level(level: &CelebrationLevel) -> u32 {
     }
 }
 
+/// XP with 2× streak bonus when commit_streak_days >= 5
+pub fn xp_for_event(level: &CelebrationLevel, state: &State) -> u32 {
+    let base = xp_for_level(level);
+    if base > 0 && state.commit_streak_days >= 5 {
+        base * 2
+    } else {
+        base
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,5 +136,18 @@ mod tests {
         let event = make_event(EventKind::GitPush, None);
         let result = decide(&event, &state, &cfg);
         assert_eq!(result, CelebrationLevel::Epic);
+    }
+
+    #[test]
+    fn test_streak_bonus_doubles_xp() {
+        let mut state = State::default();
+        state.commit_streak_days = 5;
+        assert_eq!(xp_for_event(&CelebrationLevel::Medium, &state), 50); // 25 * 2
+    }
+
+    #[test]
+    fn test_no_streak_bonus_below_5_days() {
+        let state = State::default(); // streak = 0
+        assert_eq!(xp_for_event(&CelebrationLevel::Medium, &state), 25);
     }
 }
