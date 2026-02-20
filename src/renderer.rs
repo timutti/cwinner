@@ -1,5 +1,5 @@
 use crate::celebration::CelebrationLevel;
-use crate::state::State;
+use crate::state::{State, LEVELS};
 use crossterm::{
     cursor, execute, queue,
     style::{Color, Print, ResetColor, SetForegroundColor},
@@ -11,7 +11,11 @@ use std::io::{self, Write};
 use std::thread;
 use std::time::Duration;
 
-pub const LEVEL_THRESHOLDS: &[u32] = &[0, 100, 500, 1500, 5000, u32::MAX];
+/// Return the XP threshold for the level at `index` in the LEVELS table.
+/// Returns `u32::MAX` if `index` is out of range (i.e., past the last defined level).
+pub fn level_threshold(index: usize) -> u32 {
+    LEVELS.get(index).map(|&(t, _)| t).unwrap_or(u32::MAX)
+}
 const CONFETTI_CHARS: &[char] = &['✦', '★', '♦', '●', '*', '+', '#', '✿', '❋'];
 const CONFETTI_COLORS: &[Color] = &[
     Color::Red, Color::Green, Color::Yellow, Color::Blue,
@@ -28,7 +32,7 @@ pub fn xp_bar_string(current_xp: u32, next_xp: u32, width: usize) -> String {
 }
 
 pub fn xp_for_next_level(level: u32) -> u32 {
-    LEVEL_THRESHOLDS.get(level as usize).copied().unwrap_or(u32::MAX)
+    level_threshold(level as usize)
 }
 
 pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achievement: Option<&str>) {
@@ -66,7 +70,7 @@ pub fn format_toast_msg(state: &State, achievement: Option<&str>) -> (String, Co
         )
     } else {
         let level_idx = (state.level.saturating_sub(1)) as usize;
-        let prev_threshold = LEVEL_THRESHOLDS.get(level_idx).copied().unwrap_or(0);
+        let prev_threshold = level_threshold(level_idx);
         let next_xp = xp_for_next_level(state.level);
         let xp_in_level = state.xp.saturating_sub(prev_threshold);
         let xp_needed = next_xp.saturating_sub(prev_threshold);
@@ -130,6 +134,7 @@ pub fn render_confetti(tty_path: &str) -> io::Result<()> {
         thread::sleep(Duration::from_millis(frame_ms));
     }
 
+    execute!(tty, LeaveAlternateScreen)?;
     Ok(())
 }
 
@@ -138,7 +143,7 @@ pub fn render_splash(tty_path: &str, state: &State, achievement: &str) -> io::Re
     let (cols, rows) = tty_size(&tty);
     let mid_row = rows / 2;
 
-    execute!(tty, Clear(ClearType::All), cursor::Hide)?;
+    execute!(tty, EnterAlternateScreen, Clear(ClearType::All), cursor::Hide)?;
 
     let inner_width = (cols as usize).saturating_sub(2);
     let border = "═".repeat(inner_width);

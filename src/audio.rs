@@ -12,10 +12,6 @@ pub enum SoundKind {
     Streak,
 }
 
-pub fn sound_file_for_level(kind: &SoundKind) -> &'static str {
-    kind.name()
-}
-
 impl SoundKind {
     pub fn name(&self) -> &'static str {
         match self {
@@ -128,11 +124,11 @@ mod tests {
 
     #[test]
     fn test_sound_file_name() {
-        assert_eq!(sound_file_for_level(&SoundKind::Mini), "mini");
-        assert_eq!(sound_file_for_level(&SoundKind::Milestone), "milestone");
-        assert_eq!(sound_file_for_level(&SoundKind::Epic), "epic");
-        assert_eq!(sound_file_for_level(&SoundKind::Fanfare), "fanfare");
-        assert_eq!(sound_file_for_level(&SoundKind::Streak), "streak");
+        assert_eq!(SoundKind::Mini.name(), "mini");
+        assert_eq!(SoundKind::Milestone.name(), "milestone");
+        assert_eq!(SoundKind::Epic.name(), "epic");
+        assert_eq!(SoundKind::Fanfare.name(), "fanfare");
+        assert_eq!(SoundKind::Streak.name(), "streak");
     }
 
     #[test]

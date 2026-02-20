@@ -75,10 +75,7 @@ fn main() {
         Commands::Stats => {
             let s = State::load();
             let level_idx = (s.level as usize).saturating_sub(1);
-            let prev_xp = cwinner_lib::renderer::LEVEL_THRESHOLDS
-                .get(level_idx.saturating_sub(1))
-                .copied()
-                .unwrap_or(0);
+            let prev_xp = cwinner_lib::renderer::level_threshold(level_idx.saturating_sub(1));
             let next_xp = cwinner_lib::renderer::xp_for_next_level(s.level);
             let xp_in_level = s.xp.saturating_sub(prev_xp);
             let xp_needed = next_xp.saturating_sub(prev_xp);

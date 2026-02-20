@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub fn install(binary_path: &Path) -> Result<()> {
     let binary_str = binary_path.to_str().unwrap_or("cwinner");
@@ -18,7 +18,7 @@ pub fn install(binary_path: &Path) -> Result<()> {
 
     // 2. Git global hooks
     let git_hooks_dir = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from(dirs::home_dir().unwrap_or_default().join(".config")))
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
         .join("git")
         .join("hooks");
     std::fs::create_dir_all(&git_hooks_dir)?;
@@ -27,7 +27,7 @@ pub fn install(binary_path: &Path) -> Result<()> {
         include_str!("hooks/templates/git_post_commit.sh"),
     )?;
     install_git_hook(
-        &git_hooks_dir.join("post-push"),
+        &git_hooks_dir.join("pre-push"),
         include_str!("hooks/templates/git_post_push.sh"),
     )?;
     println!("✓ Git hooks nainstalovány do {}", git_hooks_dir.display());
@@ -241,9 +241,6 @@ splash_screen = true
 progress_bar = true
 confetti_duration_ms = 1500
 splash_duration_ms = 2000
-
-[streaks]
-commit_streak_notify = [5, 10, 25, 50, 100]
 "#;
 
 #[cfg(test)]

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-const LEVELS: &[(u32, &str)] = &[
+pub const LEVELS: &[(u32, &str)] = &[
     (0,    "Vibe Initiate"),
     (100,  "Prompt Whisperer"),
     (500,  "Vibe Architect"),
