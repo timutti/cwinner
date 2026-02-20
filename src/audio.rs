@@ -40,6 +40,7 @@ pub fn celebration_to_sound(level: &CelebrationLevel) -> Option<SoundKind> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Player {
     Afplay,
+    PwPlay,
     Paplay,
     Aplay,
     Mpg123,
@@ -51,6 +52,7 @@ pub fn detect_player() -> Option<Player> {
         vec![(Player::Afplay, "afplay")]
     } else {
         vec![
+            (Player::PwPlay, "pw-play"),
             (Player::Paplay, "paplay"),
             (Player::Aplay, "aplay"),
             (Player::Mpg123, "mpg123"),
@@ -92,6 +94,7 @@ pub fn play_sound(kind: &SoundKind, sound_pack: &str) {
 
     let (cmd, args): (&str, Vec<String>) = match player {
         Player::Afplay => ("afplay", vec![path_str]),
+        Player::PwPlay => ("pw-play", vec![path_str]),
         Player::Paplay => ("paplay", vec![path_str]),
         Player::Aplay => ("aplay", vec!["-q".into(), path_str]),
         Player::Mpg123 => ("mpg123", vec!["-q".into(), path_str]),
