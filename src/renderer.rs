@@ -83,11 +83,11 @@ pub fn finish_render(mut guard: std::sync::MutexGuard<'static, Option<Instant>>)
 
 pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achievement: Option<&str>) {
     match level {
-        CelebrationLevel::Off | CelebrationLevel::Mini => {}
+        CelebrationLevel::Off => {}
+        CelebrationLevel::Mini => { let _ = render_progress_bar(tty_path, state); }
         CelebrationLevel::Medium => { let _ = render_toast(tty_path, state, achievement); }
         CelebrationLevel::Epic => {
-            let _ = render_confetti(tty_path);
-            let _ = render_splash(tty_path, state, achievement.unwrap_or("ACHIEVEMENT UNLOCKED!"));
+            let _ = render_epic(tty_path, state, achievement.unwrap_or("ACHIEVEMENT UNLOCKED!"));
         }
     }
 }
@@ -132,6 +132,51 @@ pub fn format_toast_msg(state: &State, achievement: Option<&str>) -> (String, Co
     }
 }
 
+/// Format the progress bar message for Mini celebrations.
+/// Returns (formatted_string, color).
+pub fn format_progress_bar_msg(state: &State) -> (String, Color) {
+    let next = xp_for_next_level(state.level);
+    if next == u32::MAX {
+        (
+            format!("⚡ {} │ {} XP │ MAX", state.level_name, state.xp),
+            Color::Cyan,
+        )
+    } else {
+        let (xp_in_level, xp_needed) = xp_progress(state.level, state.xp);
+        let bar = xp_bar_string(xp_in_level, xp_needed, 15);
+        (
+            format!("⚡ {} │ {} │ {} XP", state.level_name, bar, state.xp),
+            Color::Cyan,
+        )
+    }
+}
+
+/// Mini celebration: brief progress bar on the bottom line of the terminal.
+/// Uses alternate screen (same as toast) for Claude Code compatibility.
+/// Duration: 3 seconds.
+pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
+    let mut tty = open_tty(tty_path)?;
+    let (cols, rows) = tty_size(&tty);
+    let (msg, color) = format_progress_bar_msg(state);
+
+    let pad_width = (cols as usize).saturating_sub(2);
+    let bottom_row = rows.saturating_sub(1);
+
+    execute!(tty, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All))?;
+
+    queue!(tty,
+        cursor::MoveTo(0, bottom_row),
+        SetForegroundColor(color),
+        Print(format!("{:<width$}", msg, width = pad_width)),
+        ResetColor,
+    )?;
+    tty.flush()?;
+
+    thread::sleep(Duration::from_millis(3000));
+
+    execute!(tty, LeaveAlternateScreen)
+}
+
 /// Brief alternate screen overlay — the only safe way to display in a terminal
 /// managed by Claude Code's differential renderer without corrupting its state.
 pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) -> io::Result<()> {
@@ -158,15 +203,18 @@ pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) ->
     execute!(tty, LeaveAlternateScreen)
 }
 
-pub fn render_confetti(tty_path: &str) -> io::Result<()> {
+/// Epic celebration: confetti rain → splash box over confetti background.
+/// Single alternate screen session to avoid flicker.
+fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<()> {
     let mut tty = open_tty(tty_path)?;
     let mut rng = rand::thread_rng();
     let (cols, rows) = tty_size(&tty);
+
+    execute!(tty, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All))?;
+
+    // Phase 1: confetti rain (1.5s)
     let frames = 15u64;
     let frame_ms = 1500 / frames;
-
-    execute!(tty, EnterAlternateScreen, cursor::Hide)?;
-
     for _ in 0..frames {
         for _ in 0..(cols / 4) {
             let col = rng.gen_range(0..cols);
@@ -183,17 +231,8 @@ pub fn render_confetti(tty_path: &str) -> io::Result<()> {
         thread::sleep(Duration::from_millis(frame_ms));
     }
 
-    execute!(tty, LeaveAlternateScreen)?;
-    Ok(())
-}
-
-pub fn render_splash(tty_path: &str, state: &State, achievement: &str) -> io::Result<()> {
-    let mut tty = open_tty(tty_path)?;
-    let (cols, rows) = tty_size(&tty);
+    // Phase 2: splash box drawn over confetti background (2s)
     let mid_row = rows / 2;
-
-    execute!(tty, EnterAlternateScreen, Clear(ClearType::All), cursor::Hide)?;
-
     let inner_width = (cols as usize).saturating_sub(2);
     let border = "═".repeat(inner_width);
     let top = format!("╔{}╗", border);
@@ -222,7 +261,8 @@ pub fn render_splash(tty_path: &str, state: &State, achievement: &str) -> io::Re
     )?;
     tty.flush()?;
     thread::sleep(Duration::from_millis(2000));
-    execute!(tty, cursor::Show, LeaveAlternateScreen, ResetColor)
+
+    execute!(tty, LeaveAlternateScreen)
 }
 
 #[cfg(test)]
@@ -353,5 +393,77 @@ mod tests {
             assert_eq!(in_l + prev, xp,
                 "level={}, xp={}: in_level {} + prev {} != xp", level, xp, in_l, prev);
         }
+    }
+
+    // --- Progress bar (Mini celebration) tests ---
+
+    #[test]
+    fn test_format_progress_bar_msg_regular() {
+        let mut state = State::default();
+        state.xp = 50;
+        state.level = 1;
+        state.level_name = "Vibe Initiate".into();
+        let (msg, color) = format_progress_bar_msg(&state);
+        assert!(msg.contains("⚡"));
+        assert!(msg.contains("Vibe Initiate"));
+        assert!(msg.contains("50 XP"));
+        assert!(msg.contains('█') || msg.contains('░'));
+        assert_eq!(color, Color::Cyan);
+    }
+
+    #[test]
+    fn test_format_progress_bar_msg_mid_level() {
+        let mut state = State::default();
+        state.xp = 750;
+        state.level = 3;
+        state.level_name = "Vibe Architect".into();
+        let (msg, color) = format_progress_bar_msg(&state);
+        assert!(msg.contains("⚡"));
+        assert!(msg.contains("Vibe Architect"));
+        assert!(msg.contains("750 XP"));
+        // Should have both filled and unfilled bar segments
+        assert!(msg.contains('█'));
+        assert!(msg.contains('░'));
+        assert_eq!(color, Color::Cyan);
+    }
+
+    #[test]
+    fn test_format_progress_bar_msg_max_level() {
+        let mut state = State::default();
+        state.xp = 80000;
+        state.level = 10;
+        state.level_name = "Singularity".into();
+        let (msg, color) = format_progress_bar_msg(&state);
+        assert!(msg.contains("⚡"));
+        assert!(msg.contains("Singularity"));
+        assert!(msg.contains("80000 XP"));
+        assert!(msg.contains("MAX"));
+        assert_eq!(color, Color::Cyan);
+    }
+
+    #[test]
+    fn test_format_progress_bar_msg_no_achievement() {
+        // Progress bar never shows achievements (unlike toast)
+        let mut state = State::default();
+        state.xp = 250;
+        state.level = 2;
+        state.level_name = "Prompt Whisperer".into();
+        let (msg, _) = format_progress_bar_msg(&state);
+        // Should not contain trophy emoji
+        assert!(!msg.contains("🏆"));
+        // Should contain lightning bolt
+        assert!(msg.contains("⚡"));
+    }
+
+    #[test]
+    fn test_format_progress_bar_msg_format_structure() {
+        let mut state = State::default();
+        state.xp = 250;
+        state.level = 2;
+        state.level_name = "Prompt Whisperer".into();
+        let (msg, _) = format_progress_bar_msg(&state);
+        // Verify the │ delimiters are present (3 sections)
+        let delimiter_count = msg.matches('│').count();
+        assert_eq!(delimiter_count, 2, "Expected 2 │ delimiters, got {}", delimiter_count);
     }
 }
