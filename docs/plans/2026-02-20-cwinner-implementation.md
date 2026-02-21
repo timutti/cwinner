@@ -69,7 +69,10 @@ pub mod state;
 pub mod celebration;
 pub mod renderer;
 pub mod audio;
+pub mod sounds;
+pub mod achievements;
 pub mod install;
+pub mod daemon;
 ```
 
 **Step 4: Vytvoř prázdné moduly**
@@ -225,8 +228,10 @@ mod tests {
     #[test]
     fn test_default_config() {
         let cfg = Config::default();
-        assert_eq!(cfg.intensity.milestone, Intensity::Medium);
         assert_eq!(cfg.intensity.routine, Intensity::Off);
+        assert_eq!(cfg.intensity.task_completed, Intensity::Off);
+        assert_eq!(cfg.intensity.milestone, Intensity::Medium);
+        assert_eq!(cfg.intensity.breakthrough, Intensity::Epic);
         assert!(cfg.audio.enabled);
         assert!(cfg.visual.confetti);
     }
@@ -281,12 +286,11 @@ pub enum Intensity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct IntensityConfig {
-    #[serde(default = "Intensity::off")]
     pub routine: Intensity,
-    #[serde(default = "Intensity::medium")]
+    pub task_completed: Intensity,
     pub milestone: Intensity,
-    #[serde(default = "Intensity::epic")]
     pub breakthrough: Intensity,
 }
 
@@ -294,6 +298,7 @@ impl Default for IntensityConfig {
     fn default() -> Self {
         Self {
             routine: Intensity::Off,
+            task_completed: Intensity::Off,
             milestone: Intensity::Medium,
             breakthrough: Intensity::Epic,
         }
@@ -356,6 +361,8 @@ pub struct Config {
     pub audio: AudioConfig,
     #[serde(default)]
     pub visual: VisualConfig,
+    #[serde(default)]
+    pub triggers: TriggersConfig,
 }
 
 fn default_true() -> bool { true }
@@ -483,12 +490,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-const LEVELS: &[(u32, &str)] = &[
-    (0,    "Vibe Initiate"),
-    (100,  "Prompt Whisperer"),
-    (500,  "Vibe Architect"),
-    (1500, "Flow State Master"),
-    (5000, "Claude Sensei"),
+pub const LEVELS: &[(u32, &str)] = &[
+    (0,     "Vibe Initiate"),
+    (100,   "Prompt Whisperer"),
+    (500,   "Vibe Architect"),
+    (1500,  "Flow State Master"),
+    (5000,  "Claude Sensei"),
+    (10000, "Code Whisperer"),
+    (20000, "Vibe Lord"),
+    (35000, "Zen Master"),
+    (50000, "Transcendent"),
+    (75000, "Singularity"),
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -541,8 +553,8 @@ impl State {
         }
     }
 
-    /// Vrátí true pokud je to první commit dnes
-    pub fn record_commit(&mut self) -> bool {
+    /// Returns CommitResult with first_today flag and optional streak milestone
+    pub fn record_commit(&mut self) -> CommitResult {
         self.commits_total += 1;
         let today = Utc::now().date_naive();
         let first_today = self.last_commit_date.map(|d| d != today).unwrap_or(true);
@@ -668,12 +680,12 @@ mod tests {
     }
 
     #[test]
-    fn test_task_completed_is_milestone() {
+    fn test_task_completed_is_off_by_default() {
         let cfg = Config::default();
         let state = State::default();
         let event = make_event(EventKind::TaskCompleted, None);
         let result = decide(&event, &state, &cfg);
-        assert_eq!(result, CelebrationLevel::Medium);
+        assert_eq!(result, CelebrationLevel::Off);
     }
 
     #[test]
@@ -754,7 +766,7 @@ pub fn decide(event: &Event, state: &State, cfg: &Config) -> CelebrationLevel {
     }
 
     match event.event {
-        EventKind::TaskCompleted => CelebrationLevel::from(&cfg.intensity.milestone),
+        EventKind::TaskCompleted => CelebrationLevel::from(&cfg.intensity.task_completed),
         EventKind::GitCommit => CelebrationLevel::from(&cfg.intensity.milestone),
         EventKind::GitPush => CelebrationLevel::from(&cfg.intensity.breakthrough),
         EventKind::SessionEnd => CelebrationLevel::from(&cfg.intensity.milestone),
@@ -853,7 +865,7 @@ use std::io::{self, Write};
 use std::thread;
 use std::time::Duration;
 
-const LEVEL_THRESHOLDS: &[u32] = &[0, 100, 500, 1500, 5000, u32::MAX];
+// Level thresholds are derived from the LEVELS table in state.rs
 const CONFETTI_CHARS: &[char] = &['✦', '★', '♦', '●', '*', '+', '#', '✿', '❋'];
 const CONFETTI_COLORS: &[Color] = &[
     Color::Red, Color::Green, Color::Yellow, Color::Blue,
@@ -1080,6 +1092,7 @@ pub fn celebration_to_sound(level: &CelebrationLevel) -> Option<SoundKind> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Player {
     Afplay,   // macOS
+    PwPlay,   // Linux PipeWire
     Paplay,   // Linux PulseAudio
     Aplay,    // Linux ALSA
     Mpg123,
@@ -1088,9 +1101,15 @@ pub enum Player {
 
 pub fn detect_player() -> Option<Player> {
     let candidates = if cfg!(target_os = "macos") {
-        vec![Player::Afplay]
+        vec![(Player::Afplay, "afplay")]
     } else {
-        vec![Player::Paplay, Player::Aplay, Player::Mpg123, Player::Mpg321]
+        vec![
+            (Player::PwPlay, "pw-play"),
+            (Player::Paplay, "paplay"),
+            (Player::Aplay, "aplay"),
+            (Player::Mpg123, "mpg123"),
+            (Player::Mpg321, "mpg321"),
+        ]
     };
 
     for player in candidates {
@@ -1181,12 +1200,12 @@ mod tests {
     }
 
     #[test]
-    fn test_process_event_task_completed_adds_xp() {
+    fn test_process_event_task_completed_no_xp_by_default() {
         let mut state = crate::state::State::default();
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::TaskCompleted);
-        process_event_with_state(&event, &mut state, &cfg, false);
-        assert!(state.xp > 0);
+        process_event_with_state(&event, &mut state, &cfg);
+        assert_eq!(state.xp, 0); // task_completed defaults to "off"
     }
 
     #[test]
@@ -1194,7 +1213,7 @@ mod tests {
         let mut state = crate::state::State::default();
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::GitCommit);
-        process_event_with_state(&event, &mut state, &cfg, false);
+        process_event_with_state(&event, &mut state, &cfg);
         assert_eq!(state.commits_total, 1);
     }
 }
@@ -1375,7 +1394,7 @@ git commit -m "feat: tokio unix socket daemon server"
 - Create: `src/hooks/templates/task_completed.sh`
 - Create: `src/hooks/templates/session_end.sh`
 - Create: `src/hooks/templates/git_post_commit.sh`
-- Create: `src/hooks/templates/git_post_push.sh`
+- Create: `src/hooks/templates/git_pre_push.sh`
 
 **Step 1: Vytvoř hook pro PostToolUse**
 
@@ -1478,12 +1497,12 @@ if [ -S "$SOCKET" ]; then
 fi
 ```
 
-**Step 5: Vytvoř git post-push hook**
+**Step 5: Vytvoř git pre-push hook**
 
 ```bash
-# src/hooks/templates/git_post_push.sh
+# src/hooks/templates/git_pre_push.sh
 #!/usr/bin/env bash
-# cwinner git hook: post-push
+# cwinner git hook: pre-push
 
 SOCKET="${XDG_DATA_HOME:-$HOME/.local/share}/cwinner/cwinner.sock"
 TTY_PATH="$(tty 2>/dev/null || echo /dev/null)"
@@ -1593,7 +1612,7 @@ pub fn install(binary_path: &Path) -> Result<()> {
         .join("hooks");
     std::fs::create_dir_all(&git_hooks_dir)?;
     install_git_hook(&git_hooks_dir.join("post-commit"), include_str!("hooks/templates/git_post_commit.sh"))?;
-    install_git_hook(&git_hooks_dir.join("post-push"), include_str!("hooks/templates/git_post_push.sh"))?;
+    install_git_hook(&git_hooks_dir.join("pre-push"), include_str!("hooks/templates/git_pre_push.sh"))?;
     println!("✓ Git hooks nainstalován do {}", git_hooks_dir.display());
 
     // 3. Default config
@@ -1742,9 +1761,6 @@ splash_screen = true
 progress_bar = true
 confetti_duration_ms = 1500
 splash_duration_ms = 2000
-
-[streaks]
-commit_streak_notify = [5, 10, 25, 50, 100]
 "#;
 
 pub fn uninstall() -> Result<()> {
@@ -1762,7 +1778,7 @@ pub fn uninstall() -> Result<()> {
 **Step 4: Přidej include soubory do hook templates** — vytvoř prázdné soubory:
 
 ```bash
-touch src/hooks/templates/git_post_commit.sh src/hooks/templates/git_post_push.sh
+touch src/hooks/templates/git_post_commit.sh src/hooks/templates/git_pre_push.sh
 ```
 
 **Step 5: Spusť test — ověř pass**
@@ -1998,24 +2014,19 @@ git commit -m "feat: cwinner CLI with install/status/stats/hook/daemon commands"
 ```markdown
 # sounds/default/
 
-Výchozí sound pack pro cwinner.
+Výchozí sound pack pro cwinner. Zvuky jsou multi-notové melodie generované sinusovou syntézou při `cwinner install`.
 
-## Požadované soubory
+## Soubory (generovány automaticky)
 
-- `mini.ogg` — krátký tichý zvuk pro rutinní eventy
-- `milestone.ogg` — uspokojivý zvuk pro milníky (commit, task)
-- `epic.ogg` — výrazný zvuk pro průlomové momenty
-- `fanfare.ogg` — fanfára pro epické oslavy
-- `streak.ogg` — speciální zvuk pro streak milníky
-
-## Zdroje zdarma
-
-- https://freesound.org (licence CC0)
-- https://opengameart.org
+- `mini.wav` — quick double-tap notification (E6 → G6)
+- `milestone.wav` — rising two-note chime (C5 → E5)
+- `epic.wav` — C major chord with swell (C4+E4+G4+C5)
+- `fanfare.wav` — ascending four-note trumpet call (C5 → E5 → G5 → C6)
+- `streak.wav` — rapid ascending scale with echo + final chord
 
 ## Formáty
 
-Podporovány: `.ogg`, `.wav`. Preferuj `.ogg` (menší soubory).
+Podporovány: `.ogg`, `.wav`, `.mp3`. Výchozí pack používá `.wav` (mono, 16-bit PCM, 44100 Hz).
 
 ## Vlastní pack
 

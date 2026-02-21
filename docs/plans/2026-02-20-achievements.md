@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Implement a 24-achievement registry that fires from the daemon on every event, displays unlock splash screens, plays the streak sound, and awards 2× XP streak bonuses.
+**Goal:** Implement a 26-achievement registry that fires from the daemon on every event, displays unlock splash screens, plays the streak sound, and awards 2× XP streak bonuses.
 
-**Architecture:** New `src/achievements.rs` module holds a static registry of 24 `Achievement` structs. After every state mutation in `daemon/server.rs`, `check_achievements(&state, &event)` returns newly unlocked achievements. The first unlocked achievement's name replaces the generic event-name in the splash screen. Streak bonus (2× XP when `commit_streak_days >= 5`) is applied in `celebration.rs`.
+**Architecture:** `src/achievements.rs` module holds a static registry of 26 `Achievement` structs. After every state mutation in `daemon/server.rs`, `check_achievements(&state, &event)` returns newly unlocked achievements. The first unlocked achievement's name replaces the generic event-name in the splash screen. Streak bonus (2× XP when `commit_streak_days >= 5`) is applied in `celebration.rs`.
 
 **Tech Stack:** Rust, existing `State`/`Event`/`CelebrationLevel` types — zero new dependencies.
 
@@ -39,8 +39,8 @@ mod tests {
     }
 
     #[test]
-    fn test_registry_has_24_achievements() {
-        assert_eq!(REGISTRY.len(), 24);
+    fn test_registry_has_26_achievements() {
+        assert_eq!(REGISTRY.len(), 26);
     }
 
     #[test]
@@ -148,11 +148,13 @@ pub static REGISTRY: &[Achievement] = &[
     // Tools
     Achievement { id: "tool_explorer", name: "Tool Explorer",        description: "Used 5 different tools" },
     Achievement { id: "tool_master",   name: "Tool Master",          description: "Used 10 different tools" },
-    // Levels
+    // Levels (6)
     Achievement { id: "level_2",       name: "Prompt Whisperer",     description: "Reached level 2" },
     Achievement { id: "level_3",       name: "Vibe Architect",       description: "Reached level 3" },
     Achievement { id: "level_4",       name: "Flow State Master",    description: "Reached level 4" },
     Achievement { id: "level_5",       name: "Claude Sensei",        description: "Reached level 5" },
+    Achievement { id: "level_7",       name: "Vibe Lord",            description: "Reached level 7" },
+    Achievement { id: "level_10",      name: "Singularity",          description: "Reached level 10" },
     // Claude Code basics
     Achievement { id: "first_subagent",name: "Delegator",            description: "Spawned a subagent with Task tool" },
     Achievement { id: "web_surfer",    name: "Web Surfer",           description: "Used WebSearch" },
@@ -203,6 +205,8 @@ fn is_unlocked(a: &Achievement, state: &State, event: &Event) -> bool {
         "level_3" => state.level >= 3,
         "level_4" => state.level >= 4,
         "level_5" => state.level >= 5,
+        "level_7" => state.level >= 7,
+        "level_10" => state.level >= 10,
         // Claude Code tools
         "first_subagent"      => state.tools_used.contains("Task"),
         "web_surfer"          => state.tools_used.contains("WebSearch"),
@@ -231,13 +235,13 @@ pub mod achievements;
 cargo test achievements -- --nocapture
 ```
 
-Expected: all 8 tests pass
+Expected: all tests pass
 
 **Step 6: Commit**
 
 ```bash
 git add src/achievements.rs src/lib.rs
-git commit -m "feat: add achievement registry with 24 achievements"
+git commit -m "feat: add achievement registry with 26 achievements"
 ```
 
 ---
@@ -325,11 +329,11 @@ Add to `src/daemon/server.rs` tests:
 fn test_first_commit_achievement_fires() {
     let mut state = crate::state::State::default();
     let cfg = crate::config::Config::default();
-    let mut event = make_event(EventKind::GitCommit);
+    let event = make_event(EventKind::GitCommit);
 
-    process_event_with_state(&event, &mut state, &cfg, false);
+    process_event_with_state(&event, &mut state, &cfg);
 
-    assert!(state.achievements_unlocked.contains(&"first_commit".to_string()));
+    assert!(state.achievements_unlocked.iter().any(|id| id == "first_commit"));
 }
 
 #[test]
@@ -337,9 +341,9 @@ fn test_level_up_achievement_fires() {
     let mut state = crate::state::State::default();
     state.xp = 95; // just below level 2 (100 XP)
     let cfg = crate::config::Config::default();
-    let event = make_event(EventKind::TaskCompleted); // adds 25 XP → level 2
+    let event = make_event(EventKind::GitCommit); // adds 25 XP (milestone) → level 2
 
-    process_event_with_state(&event, &mut state, &cfg, false);
+    process_event_with_state(&event, &mut state, &cfg);
 
     assert!(state.achievements_unlocked.contains(&"level_2".to_string()));
 }
@@ -348,10 +352,12 @@ fn test_level_up_achievement_fires() {
 fn test_streak_bonus_applied_in_process_event() {
     let mut state = crate::state::State::default();
     state.commit_streak_days = 5;
+    let yesterday = chrono::Utc::now().date_naive().pred_opt().unwrap();
+    state.last_commit_date = Some(yesterday);
     let cfg = crate::config::Config::default();
-    let event = make_event(EventKind::TaskCompleted);
+    let event = make_event(EventKind::GitCommit);
 
-    process_event_with_state(&event, &mut state, &cfg, false);
+    process_event_with_state(&event, &mut state, &cfg);
 
     // 25 XP * 2 streak bonus = 50 XP
     assert_eq!(state.xp, 50);
@@ -422,39 +428,43 @@ if let Ok(event) = serde_json::from_str::<Event>(line) {
 }
 ```
 
-Also update `process_event_with_state` to use `xp_for_event` and check achievements:
+Also update `process_event_with_state` to use `xp_for_event`, check achievements, and return the celebration tuple:
 
 ```rust
 pub fn process_event_with_state(
     event: &Event,
     state: &mut State,
     cfg: &Config,
-    render_visual: bool,
-) {
-    let level = decide(event, state, cfg);
+) -> (CelebrationLevel, Option<String>, bool) {
+    let mut level = decide(event, state, cfg);
     let xp = xp_for_event(&level, state);
     if xp > 0 {
         state.add_xp(xp);
     }
+    let mut is_streak_milestone = false;
     if event.event == EventKind::GitCommit {
-        state.record_commit();
+        let commit_result = state.record_commit();
+        if commit_result.streak_milestone.is_some() {
+            is_streak_milestone = true;
+            level = CelebrationLevel::Epic;
+        }
     }
     if let Some(tool) = &event.tool {
         state.record_tool_use(tool);
     }
+    // Check achievements BEFORE updating last_bash_exit (test_whisperer needs old value)
+    let newly_unlocked = check_achievements(state, event);
+    let achievement_name = newly_unlocked.first().map(|a| a.name.to_string());
+    for a in &newly_unlocked {
+        state.unlock_achievement(a.id);
+    }
+    // Update last_bash_exit AFTER achievements checked
     if event.event == EventKind::PostToolUse {
         if let Some(code) = event.metadata.get("exit_code").and_then(|v| v.as_i64()) {
             state.last_bash_exit = Some(code as i32);
         }
     }
-    let newly_unlocked = check_achievements(state, event);
-    for a in &newly_unlocked {
-        state.unlock_achievement(a.id);
-    }
-    if render_visual && level != CelebrationLevel::Off {
-        let name = newly_unlocked.first().map(|a| a.name.to_string());
-        render(&event.tty_path, &level, state, name.as_deref());
-    }
+    (level, achievement_name, is_streak_milestone)
 }
 ```
 

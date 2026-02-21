@@ -48,10 +48,13 @@ cwinner je gamifikační aplikace která oslavuje úspěchy při používání C
 
 **cwinnerd** — hlavní Rust daemon, běží jako systemd user service (Linux) nebo launchd agent (macOS). Naslouchá na Unix socketu. Drží veškerý stav v paměti, persistuje do `~/.local/share/cwinner/state.json`. Sleduje per-session informace (`SessionInfo`) — počet commitů v session a milníky délky trvání session (1h/3h/8h).
 
-**Hook skripty** — tenké shell skripty (bash) pro git hooks a Rust CLI subcommand `cwinner hook` pro Claude Code hooks. Instalované do `~/.claude/settings.json` (CC hooks) a `~/.config/git/hooks/` (git hooks). Git hooks používají `socat` nebo `nc` pro komunikaci se socketem. CC hook:
+**Hook skripty** — tenké shell skripty (bash) pro git hooks a Rust CLI subcommand `cwinner hook` pro Claude Code hooks. Instalované do `~/.claude/settings.json` (CC hooks) a `~/.config/git/hooks/` (git hooks). Git hooks používají `socat` (přednostně) nebo `nc` (fallback, s BSD kompatibilitou na macOS) pro komunikaci se socketem. CC hook (`cwinner hook` subcommand):
 1. Přečte JSON ze stdin (Claude Code posílá metadata)
-2. Zjistí `tty_path` procházením process tree (`/proc/PID/fd/`) a hledáním `/dev/pts/N`
-3. Odešle Event přes Unix socket daemonovi
+2. Zjistí `tty_path`:
+   - **Linux:** procházení process tree (`/proc/PID/fd/0,1,2`) směrem k rodiči, hledá `/dev/pts/N` (až 10 úrovní)
+   - **macOS:** `libc::ttyname()` na fd 0, 1, 2
+   - **Fallback:** `/dev/tty` nebo `/dev/null`
+3. Odešle Event přes Unix socket daemonovi (synchronní `UnixStream::connect`)
 4. Okamžitě skončí (neblokuje Claude Code)
 
 **cwinner CLI** — uživatelský příkaz pro instalaci, konfiguraci, zobrazení statistik a správu sound packů.
@@ -84,7 +87,7 @@ JSON zprávy přes Unix socket. Každá zpráva má:
 - `GitPush`
 - `UserDefined`
 
-Daemon odpovídá synchronně jen pro `status` a `stats` příkazy (`DaemonCommand`). Eventy jsou fire-and-forget.
+Eventy jsou fire-and-forget — daemon neposílá odpověď. Příkazy `status` a `stats` čtou stav přímo z JSON souboru bez komunikace s daemonem.
 
 ---
 
@@ -96,7 +99,7 @@ Daemon odpovídá synchronně jen pro `status` a `stats` příkazy (`DaemonComma
 | `PostToolUse: Bash` + exit 0 (běžný) | CC hook | routine (výchozí off) |
 | `PostToolUse: Bash` + exit 0 po předchozím failu | CC hook | breakthrough (epic) |
 | `PostToolUse: Bash` + shoda s custom trigger | CC hook | dle trigger konfigurace |
-| `TaskCompleted` | CC hook | milestone (medium) |
+| `TaskCompleted` | CC hook | task_completed (výchozí off) |
 | `GitCommit` | git post-commit hook | milestone (medium) |
 | `GitPush` | git pre-push hook | breakthrough (epic) |
 | `SessionEnd` | CC hook | milestone (medium) |
@@ -123,7 +126,7 @@ event přijde
   │     ├── exit 0? → ROUTINE (default off)
   │     └── exit != 0? → OFF
   ├── PostToolUse: Write/Edit/Read? → ROUTINE (default off)
-  ├── TaskCompleted? → MILESTONE (medium)
+  ├── TaskCompleted? → TASK_COMPLETED (default off)
   ├── GitCommit? → MILESTONE (medium)
   ├── GitPush? → BREAKTHROUGH (epic)
   ├── SessionEnd? → MILESTONE (medium)
@@ -221,17 +224,17 @@ Detekce přehrávače přes `which`. Přehrávání je fire-and-forget (`Command
 
 Hledání zvukového souboru: `~/.config/cwinner/sounds/{pack-name}/{kind}.{ogg|wav|mp3}`.
 
-Pokud soubor v pack adresáři neexistuje, fallback: **generování `.wav` za běhu** přes sinusovou syntézu do `/tmp/cwinner/{kind}.wav`. Parametry:
+Pokud soubor v pack adresáři neexistuje, fallback: **generování `.wav` za běhu** přes sinusovou syntézu do `/tmp/cwinner/{kind}.wav`. Každý zvuk je multi-notová melodie:
 
-| Zvuk | Frekvence | Délka |
-|---|---|---|
-| mini | 880 Hz (A5) | 0.3s |
-| milestone | 523.25 Hz (C5) | 0.8s |
-| epic | 659.25 Hz (E5) | 1.2s |
-| fanfare | 783.99 Hz (G5) | 1.5s |
-| streak | 1046.5 Hz (C6) | 1.5s |
+| Zvuk | Popis | Noty | Délka |
+|---|---|---|---|
+| mini | quick double-tap notification | E6 → G6 (2 noty) | 0.2s |
+| milestone | rising two-note chime | C5 → E5 (2 noty) | 0.6s |
+| epic | C major chord with swell | C4+E4+G4+C5 (4 simultánní noty) | 1.0s |
+| fanfare | ascending four-note trumpet call | C5 → E5 → G5 → C6 (4 noty) | 1.2s |
+| streak | rapid ascending scale with echo | C5–C6 (8 not + 8 echo + final chord) | 1.6s |
 
-WAV soubory: mono, 16-bit PCM, 44100 Hz sample rate, lineární fade-out envelope. Generované přes `sounds::generate_wav()` a `sounds::encode_wav()`.
+WAV soubory: mono, 16-bit PCM, 44100 Hz sample rate. Noty mají 5ms attack a exponenciální decay obálku. Peak normalizace na 90% zabraňuje clippingu. Generované přes `sounds::generate_wav()` a `sounds::encode_wav()`.
 
 Příkaz `cwinner install` extrahuje výchozí pack (generované `.wav`) do `~/.config/cwinner/sounds/default/`.
 
@@ -324,6 +327,7 @@ Soubor `~/.config/cwinner/config.toml`:
 ```toml
 [intensity]
 routine = "off"          # off | mini | medium | epic
+task_completed = "off"   # separátní od milestone — zamezuje toast spamu při práci agentů
 milestone = "medium"
 breakthrough = "epic"
 
@@ -350,7 +354,7 @@ intensity = "epic"
 
 ```rust
 pub struct Config {
-    pub intensity: IntensityConfig,    // routine, milestone, breakthrough
+    pub intensity: IntensityConfig,    // routine, task_completed, milestone, breakthrough
     pub audio: AudioConfig,            // enabled, sound_pack, volume
     pub visual: VisualConfig,          // confetti, splash_screen, progress_bar, durations
     pub triggers: TriggersConfig,      // custom: Vec<CustomTrigger>
@@ -398,7 +402,7 @@ cwinner/
 │   ├── daemon_main.rs       # cwinnerd standalone entry point
 │   ├── lib.rs               # knihovní crate (cwinner_lib)
 │   ├── config.rs            # Config parsing (TOML)
-│   ├── event.rs             # Event, EventKind, DaemonCommand, DaemonResponse
+│   ├── event.rs             # Event, EventKind
 │   ├── state.rs             # State engine (XP, levely, streaky, persistence)
 │   ├── celebration.rs       # Celebration engine (kontextová logika, XP přidělování)
 │   ├── renderer.rs          # TTY renderer (progress bar, toast, epic, render lock)
@@ -413,9 +417,15 @@ cwinner/
 │       └── templates/
 │           ├── git_post_commit.sh   # Git post-commit hook šablona
 │           └── git_pre_push.sh      # Git pre-push hook šablona
+├── sounds/
+│   └── default/
+│       └── README.md               # Dokumentace sound pack formátu
+├── README.md
 └── docs/
     └── plans/
-        └── 2026-02-20-cwinner-design.md
+        ├── 2026-02-20-cwinner-design.md
+        ├── 2026-02-20-cwinner-implementation.md
+        └── 2026-02-20-achievements.md
 ```
 
 ---
@@ -433,7 +443,7 @@ cwinner/
 | `rand` | Náhodné pozice/barvy konfet |
 | `dirs` | XDG cesty (config, data, home) |
 | `anyhow` | Error handling |
-| `libc` | TIOCGWINSZ ioctl pro zjištění velikosti terminálu |
+| `libc` | TIOCGWINSZ ioctl pro zjištění velikosti terminálu + `ttyname()` na macOS |
 
 Dev dependencies: `tempfile`.
 
