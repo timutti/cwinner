@@ -2,7 +2,7 @@
 name = "cwinner"
 version = "0.1.1"
 edition = "2021"
-rust-version = "1.74.0"
+rust-version = "1.83.0"
 authors = ["timutti"]
 description = "Gamification overlay for Claude Code — XP, levels, achievements, and celebrations"
 license = "MIT"
@@ -24,12 +24,12 @@ path = "src/lib.rs"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
-crossterm = "0.28"
+toml = "1"
+crossterm = "0.29"
 clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
-rand = "0.8"
-dirs = "5"
+rand = "0.10"
+dirs = "6"
 anyhow = "1"
 libc = "0.2"
 

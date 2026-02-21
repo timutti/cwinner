@@ -5,7 +5,7 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetForegroundColor},
     terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use rand::Rng;
+use rand::RngExt;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::sync::Mutex;
@@ -184,7 +184,7 @@ pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) ->
 /// Single alternate screen session to avoid flicker.
 fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<()> {
     let mut tty = open_tty(tty_path)?;
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let (cols, rows) = tty_size(&tty);
 
     execute!(tty, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All))?;
@@ -194,10 +194,10 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
     let frame_ms = 1500 / frames;
     for _ in 0..frames {
         for _ in 0..(cols / 4) {
-            let col = rng.gen_range(0..cols);
-            let row = rng.gen_range(0..rows.saturating_sub(2));
-            let ch = CONFETTI_CHARS[rng.gen_range(0..CONFETTI_CHARS.len())];
-            let color = CONFETTI_COLORS[rng.gen_range(0..CONFETTI_COLORS.len())];
+            let col = rng.random_range(0..cols);
+            let row = rng.random_range(0..rows.saturating_sub(2));
+            let ch = CONFETTI_CHARS[rng.random_range(0..CONFETTI_CHARS.len())];
+            let color = CONFETTI_COLORS[rng.random_range(0..CONFETTI_COLORS.len())];
             queue!(tty,
                 cursor::MoveTo(col, row),
                 SetForegroundColor(color),
