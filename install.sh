@@ -26,13 +26,13 @@ esac
 
 TARGET="${ARCH}-${OS}"
 
-# Get latest release tag
+# Get latest release tag via GitHub API
 if command -v curl &>/dev/null; then
-    LATEST=$(curl -sI "https://github.com/${REPO}/releases/latest" \
-        | grep -i '^location:' | sed 's|.*/||' | tr -d '\r\n')
+    LATEST=$(curl -s "https://api.github.com/repos/${REPO}/releases/latest" \
+        | grep '"tag_name"' | sed 's/.*"tag_name": "\(.*\)".*/\1/')
 elif command -v wget &>/dev/null; then
-    LATEST=$(wget -qS -O /dev/null "https://github.com/${REPO}/releases/latest" 2>&1 \
-        | grep -i 'Location:' | tail -1 | sed 's|.*/||' | tr -d '\r\n')
+    LATEST=$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" \
+        | grep '"tag_name"' | sed 's/.*"tag_name": "\(.*\)".*/\1/')
 else
     echo "Error: curl or wget required"
     exit 1
@@ -47,19 +47,24 @@ URL="https://github.com/${REPO}/releases/download/${LATEST}/cwinner-${TARGET}.ta
 
 echo "Downloading cwinner ${LATEST} for ${TARGET}..."
 
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "${TMPDIR}"' EXIT
+DL_DIR=$(mktemp -d)
+trap 'rm -rf "${DL_DIR}"' EXIT
 
 if command -v curl &>/dev/null; then
-    curl -sL "${URL}" -o "${TMPDIR}/cwinner.tar.gz"
+    HTTP_CODE=$(curl -sL -w '%{http_code}' "${URL}" -o "${DL_DIR}/cwinner.tar.gz")
+    if [ "${HTTP_CODE}" != "200" ]; then
+        echo "Error: download failed (HTTP ${HTTP_CODE}) for ${TARGET}"
+        echo "  URL: ${URL}"
+        exit 1
+    fi
 else
-    wget -q "${URL}" -O "${TMPDIR}/cwinner.tar.gz"
+    wget -q "${URL}" -O "${DL_DIR}/cwinner.tar.gz"
 fi
 
-tar xzf "${TMPDIR}/cwinner.tar.gz" -C "${TMPDIR}"
+tar xzf "${DL_DIR}/cwinner.tar.gz" -C "${DL_DIR}"
 
 mkdir -p "${INSTALL_DIR}"
-mv "${TMPDIR}/cwinner" "${INSTALL_DIR}/cwinner"
+mv "${DL_DIR}/cwinner" "${INSTALL_DIR}/cwinner"
 chmod +x "${INSTALL_DIR}/cwinner"
 
 echo "Installed cwinner to ${INSTALL_DIR}/cwinner"

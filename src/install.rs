@@ -4,6 +4,28 @@ use std::path::Path;
 const HOOK_MARKER_START: &str = "# --- cwinner hook start ---";
 const HOOK_MARKER_END: &str = "# --- cwinner hook end ---";
 
+fn has_command(name: &str) -> bool {
+    std::process::Command::new("sh")
+        .args(["-c", &format!("command -v {name}")])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn entry_has_cwinner(entry: &serde_json::Value) -> bool {
+    entry["hooks"]
+        .as_array()
+        .is_some_and(|inner| {
+            inner
+                .iter()
+                .any(|e| e["command"].as_str().is_some_and(|s| s.contains("cwinner")))
+        })
+}
+
+fn entry_has_cwinner_legacy(entry: &serde_json::Value) -> bool {
+    entry["cmd"].as_str().is_some_and(|s| s.contains("cwinner"))
+}
+
 pub fn install(binary_path: &Path) -> Result<()> {
     let binary_str = binary_path.to_str().unwrap_or("cwinner");
 
@@ -90,33 +112,13 @@ pub fn add_claude_hooks(settings_path: &Path, binary: &str) -> Result<()> {
 
         // Remove old entries with {"cmd": "...cwinner..."} format (migration cleanup)
         if let Some(arr) = v["hooks"][hook_name].as_array_mut() {
-            arr.retain(|h| {
-                !h["cmd"]
-                    .as_str()
-                    .map(|s| s.contains("cwinner"))
-                    .unwrap_or(false)
-            });
+            arr.retain(|h| !entry_has_cwinner_legacy(h));
         }
 
         // Add only if cwinner hook is not already present
         let already_present = v["hooks"][hook_name]
             .as_array()
-            .map(|arr| {
-                arr.iter().any(|h| {
-                    h["hooks"]
-                        .as_array()
-                        .map(|inner| {
-                            inner.iter().any(|e| {
-                                e["command"]
-                                    .as_str()
-                                    .map(|s| s.contains("cwinner"))
-                                    .unwrap_or(false)
-                            })
-                        })
-                        .unwrap_or(false)
-                })
-            })
-            .unwrap_or(false);
+            .is_some_and(|arr| arr.iter().any(entry_has_cwinner));
 
         if !already_present {
             v["hooks"][hook_name]
@@ -178,17 +180,7 @@ fn install_git_hook(path: &Path, template: &str) -> Result<()> {
 }
 
 fn check_socket_tools() {
-    let has_socat = std::process::Command::new("which")
-        .arg("socat")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    let has_nc = std::process::Command::new("which")
-        .arg("nc")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if !has_socat && !has_nc {
+    if !has_command("socat") && !has_command("nc") {
         println!("⚠ Neither socat nor nc found — git hooks won't be able to send events");
         if cfg!(target_os = "macos") {
             println!("  Install with: brew install socat");
@@ -338,27 +330,19 @@ pub fn uninstall() -> Result<()> {
         }
     }
 
-    // 4. Remove socket file
-    if let Some(socket) = dirs::data_local_dir().map(|d| d.join("cwinner/cwinner.sock")) {
-        if socket.exists() {
-            std::fs::remove_file(&socket)?;
-            println!("✓ Removed {}", socket.display());
-        }
-    }
-
-    // 5. Remove config dir
+    // 4. Remove config dir
     if let Some(config_dir) = dirs::config_dir().map(|d| d.join("cwinner")) {
         if config_dir.exists() {
-            std::fs::remove_dir_all(&config_dir)?;
-            println!("✓ Removed {}", config_dir.display());
+            let _ = std::fs::remove_dir_all(&config_dir)
+                .map(|()| println!("✓ Removed {}", config_dir.display()));
         }
     }
 
-    // 6. Remove state dir
+    // 5. Remove state dir (includes socket)
     if let Some(state_dir) = dirs::data_local_dir().map(|d| d.join("cwinner")) {
         if state_dir.exists() {
-            std::fs::remove_dir_all(&state_dir)?;
-            println!("✓ Removed {}", state_dir.display());
+            let _ = std::fs::remove_dir_all(&state_dir)
+                .map(|()| println!("✓ Removed {}", state_dir.display()));
         }
     }
 
@@ -373,21 +357,7 @@ pub fn remove_claude_hooks(settings_path: &Path) -> Result<()> {
     if let Some(hooks) = v.get_mut("hooks").and_then(|h| h.as_object_mut()) {
         for (_name, arr) in hooks.iter_mut() {
             if let Some(entries) = arr.as_array_mut() {
-                entries.retain(|entry| {
-                    // Remove entries that contain cwinner commands
-                    let has_cwinner = entry["hooks"]
-                        .as_array()
-                        .map(|inner| {
-                            inner.iter().any(|e| {
-                                e["command"]
-                                    .as_str()
-                                    .map(|s| s.contains("cwinner"))
-                                    .unwrap_or(false)
-                            })
-                        })
-                        .unwrap_or(false);
-                    !has_cwinner
-                });
+                entries.retain(|entry| !entry_has_cwinner(entry) && !entry_has_cwinner_legacy(entry));
             }
         }
     }
@@ -400,15 +370,9 @@ pub fn remove_git_hook_section(path: &Path) -> Result<()> {
     let content = std::fs::read_to_string(path)?;
     if let (Some(start), Some(end)) = (content.find(HOOK_MARKER_START), content.find(HOOK_MARKER_END)) {
         let end_of_marker = end + HOOK_MARKER_END.len();
-        let after = if content[end_of_marker..].starts_with('\n') {
-            &content[end_of_marker + 1..]
-        } else {
-            &content[end_of_marker..]
-        };
+        let after = content[end_of_marker..].strip_prefix('\n').unwrap_or(&content[end_of_marker..]);
         let mut remaining = format!("{}{}", &content[..start], after);
-        // Trim trailing whitespace
-        let trimmed = remaining.trim_end();
-        remaining = trimmed.to_string();
+        remaining.truncate(remaining.trim_end().len());
         if !remaining.is_empty() {
             remaining.push('\n');
         }
@@ -481,7 +445,7 @@ mod tests {
 
         let content = std::fs::read_to_string(&settings_path).unwrap();
         let v: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert!(v["hooks"]["PostToolUse"].as_array().unwrap().len() >= 2);
+        assert_eq!(v["hooks"]["PostToolUse"].as_array().unwrap().len(), 2);
     }
 
     #[test]
@@ -496,16 +460,7 @@ mod tests {
         let content = std::fs::read_to_string(&settings_path).unwrap();
         let v: serde_json::Value = serde_json::from_str(&content).unwrap();
         let hooks = v["hooks"]["PostToolUse"].as_array().unwrap();
-        let cwinner_count = hooks
-            .iter()
-            .filter(|h| {
-                h["hooks"].as_array().map(|inner| {
-                    inner.iter().any(|e| {
-                        e["command"].as_str().map(|s| s.contains("cwinner")).unwrap_or(false)
-                    })
-                }).unwrap_or(false)
-            })
-            .count();
+        let cwinner_count = hooks.iter().filter(|h| entry_has_cwinner(h)).count();
         assert_eq!(cwinner_count, 1);
     }
 
@@ -628,5 +583,36 @@ mod tests {
             let arr = v["hooks"][hook_name].as_array().unwrap();
             assert!(arr.is_empty(), "{hook_name} should be empty after remove");
         }
+    }
+
+    #[test]
+    fn test_remove_git_hook_section_noop_when_no_cwinner() {
+        let dir = tempdir().unwrap();
+        let hook_path = dir.path().join("post-commit");
+        let content = "#!/usr/bin/env bash\necho other_tool\n";
+        std::fs::write(&hook_path, content).unwrap();
+
+        remove_git_hook_section(&hook_path).unwrap();
+
+        let remaining = std::fs::read_to_string(&hook_path).unwrap();
+        assert_eq!(remaining, content, "file should be unchanged");
+    }
+
+    #[test]
+    fn test_remove_claude_hooks_legacy_format() {
+        let dir = tempdir().unwrap();
+        let settings_path = dir.path().join("settings.json");
+        std::fs::write(
+            &settings_path,
+            r#"{"hooks":{"PostToolUse":[{"cmd":"/usr/local/bin/cwinner hook post-tool-use"},{"cmd":"other-tool"}]}}"#,
+        ).unwrap();
+
+        remove_claude_hooks(&settings_path).unwrap();
+
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+        let arr = v["hooks"]["PostToolUse"].as_array().unwrap();
+        assert_eq!(arr.len(), 1, "only non-cwinner entry should remain");
+        assert_eq!(arr[0]["cmd"].as_str().unwrap(), "other-tool");
     }
 }
