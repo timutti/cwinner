@@ -69,12 +69,12 @@ chmod +x "${INSTALL_DIR}/cwinner"
 
 echo "Installed cwinner to ${INSTALL_DIR}/cwinner"
 
+# Set up hooks, daemon, config, sounds
+"${INSTALL_DIR}/cwinner" install
+
 # Check if INSTALL_DIR is in PATH
 if ! echo "${PATH}" | tr ':' '\n' | grep -qx "${INSTALL_DIR}"; then
     echo ""
     echo "Add to your PATH:"
     echo "  export PATH=\"${INSTALL_DIR}:\${PATH}\""
 fi
-
-echo ""
-echo "Next: run 'cwinner install' to set up hooks and daemon"

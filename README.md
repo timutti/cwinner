@@ -22,10 +22,9 @@ Gamification for [Claude Code](https://claude.ai/code). Tracks your progress, aw
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/timutti/cwinner/master/install.sh | bash
-cwinner install
 ```
 
-The curl script downloads the latest release binary for your platform to `~/.local/bin/`.
+The script downloads the latest release binary for your platform to `~/.local/bin/` and runs `cwinner install` automatically (hooks, daemon, config, sounds).
 
 ### From crates.io
 
