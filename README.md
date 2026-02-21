@@ -53,6 +53,7 @@ cargo build --release
 ```
 cwinner status        # current level, XP, streak
 cwinner stats         # detailed stats and achievements
+cwinner update        # self-update to latest release
 cwinner sounds list   # available sound packs
 cwinner install       # install
 cwinner uninstall     # uninstall
