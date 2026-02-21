@@ -39,10 +39,6 @@ pub fn xp_bar_string(current_xp: u32, next_xp: u32, width: usize) -> String {
     s
 }
 
-pub fn xp_for_next_level(level: u32) -> u32 {
-    level_threshold(level as usize)
-}
-
 /// Return `(xp_in_level, xp_needed_for_level)` for the given level and total XP.
 ///
 /// `xp_in_level` is how much XP the player has earned *within* the current level,
@@ -54,7 +50,7 @@ pub fn xp_for_next_level(level: u32) -> u32 {
 pub fn xp_progress(level: u32, xp: u32) -> (u32, u32) {
     let current_idx = (level.saturating_sub(1)) as usize;
     let prev_threshold = level_threshold(current_idx);
-    let next_threshold = xp_for_next_level(level);
+    let next_threshold = level_threshold(level as usize);
     let xp_in_level = xp.saturating_sub(prev_threshold);
     let xp_needed = next_threshold.saturating_sub(prev_threshold);
     (xp_in_level, xp_needed)
@@ -115,7 +111,7 @@ pub fn format_toast_msg(state: &State, achievement: Option<&str>) -> (String, Co
             Color::Yellow,
         )
     } else {
-        let next = xp_for_next_level(state.level);
+        let next = level_threshold(state.level as usize);
         if next == u32::MAX {
             (
                 format!("⚡ {} │ {} XP │ MAX", state.level_name, state.xp),
@@ -273,9 +269,9 @@ mod tests {
 
     #[test]
     fn test_level_thresholds() {
-        assert_eq!(xp_for_next_level(1), 100);
-        assert_eq!(xp_for_next_level(2), 500);
-        assert_eq!(xp_for_next_level(3), 1500);
+        assert_eq!(level_threshold(1), 100);
+        assert_eq!(level_threshold(2), 500);
+        assert_eq!(level_threshold(3), 1500);
     }
 
     #[test]

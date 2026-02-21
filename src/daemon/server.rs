@@ -2,14 +2,14 @@ use crate::audio::{celebration_to_sound, play_sound};
 use crate::achievements::check_achievements;
 use crate::celebration::{decide, xp_for_event, CelebrationLevel};
 use crate::config::Config;
-use crate::event::{DaemonCommand, DaemonResponse, Event, EventKind};
+use crate::event::{Event, EventKind};
 use crate::renderer::render;
 use crate::state::State;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 use tokio::net::{UnixListener, UnixStream};
 
 /// Duration milestones in minutes and their celebration levels
@@ -38,10 +38,6 @@ impl Default for SessionInfo {
 }
 
 impl SessionInfo {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Check if any duration milestones have been crossed and return the highest
     /// new milestone's celebration level (if any).
     pub fn check_duration_milestones(&mut self) -> Option<CelebrationLevel> {
@@ -54,12 +50,7 @@ impl SessionInfo {
             {
                 self.duration_milestones_fired.push(minutes);
                 // Keep the highest-priority level (Epic > Medium > Mini > Off)
-                best_level = Some(match (&best_level, level) {
-                    (Some(CelebrationLevel::Epic), _) => CelebrationLevel::Epic,
-                    (_, CelebrationLevel::Epic) => CelebrationLevel::Epic,
-                    (Some(CelebrationLevel::Medium), _) => CelebrationLevel::Medium,
-                    _ => level.clone(),
-                });
+                best_level = Some(best_level.map_or(level.clone(), |b| b.max(level.clone())));
             }
         }
 
@@ -135,14 +126,6 @@ async fn handle_connection(
     let line = String::from_utf8_lossy(&buf);
     let line = line.trim();
 
-    // Příkazy (status/stats) — odpověz synchronně
-    if let Ok(cmd) = serde_json::from_str::<DaemonCommand>(line) {
-        let resp = handle_command(&cmd, &state);
-        let json = serde_json::to_string(&resp)?;
-        stream.write_all(json.as_bytes()).await?;
-        return Ok(());
-    }
-
     // Eventy — fire-and-forget
     if let Ok(event) = serde_json::from_str::<Event>(line) {
         let tty_path = event.tty_path.clone();
@@ -186,7 +169,7 @@ async fn handle_connection(
 
             // Duration milestone can upgrade celebration level
             if let Some(dur_level) = duration_milestone_level {
-                level = upgrade_level(level, dur_level);
+                level = level.max(dur_level);
             }
 
             s.save();
@@ -208,7 +191,7 @@ async fn handle_connection(
                 eprintln!("[cwinnerd] RENDERING level={:?}", level);
                 if cfg2.audio.enabled {
                     if let Some(sound) = celebration_to_sound(&level, achievement_name.is_some(), is_streak_milestone) {
-                        play_sound(&sound, &cfg2.audio.sound_pack);
+                        play_sound(&sound, &cfg2.audio);
                     }
                 }
                 render(&tty_path, &level, &state_snapshot, achievement_name.as_deref());
@@ -259,41 +242,6 @@ pub fn process_event_with_state(
         }
     }
     (level, achievement_name, is_streak_milestone)
-}
-
-/// Upgrade celebration level: return the higher of the two levels.
-fn upgrade_level(current: CelebrationLevel, candidate: CelebrationLevel) -> CelebrationLevel {
-    fn rank(l: &CelebrationLevel) -> u8 {
-        match l {
-            CelebrationLevel::Off => 0,
-            CelebrationLevel::Mini => 1,
-            CelebrationLevel::Medium => 2,
-            CelebrationLevel::Epic => 3,
-        }
-    }
-    if rank(&candidate) > rank(&current) {
-        candidate
-    } else {
-        current
-    }
-}
-
-fn handle_command(cmd: &DaemonCommand, state: &Arc<Mutex<State>>) -> DaemonResponse {
-    let s = state.lock().unwrap_or_else(|e| e.into_inner());
-    match cmd {
-        DaemonCommand::Status => DaemonResponse {
-            ok: true,
-            data: serde_json::json!({
-                "running": true,
-                "xp": s.xp,
-                "level": s.level_name
-            }),
-        },
-        DaemonCommand::Stats => DaemonResponse {
-            ok: true,
-            data: serde_json::to_value(&*s).unwrap_or_default(),
-        },
-    }
 }
 
 #[cfg(test)]
@@ -412,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_session_info_new_has_no_milestones_fired() {
-        let info = SessionInfo::new();
+        let info = SessionInfo::default();
         assert_eq!(info.commits, 0);
         assert!(info.duration_milestones_fired.is_empty());
     }
@@ -500,19 +448,19 @@ mod tests {
     }
 
     #[test]
-    fn test_upgrade_level_picks_higher() {
-        assert_eq!(upgrade_level(CelebrationLevel::Off, CelebrationLevel::Medium), CelebrationLevel::Medium);
-        assert_eq!(upgrade_level(CelebrationLevel::Medium, CelebrationLevel::Epic), CelebrationLevel::Epic);
-        assert_eq!(upgrade_level(CelebrationLevel::Epic, CelebrationLevel::Medium), CelebrationLevel::Epic);
-        assert_eq!(upgrade_level(CelebrationLevel::Mini, CelebrationLevel::Medium), CelebrationLevel::Medium);
-        assert_eq!(upgrade_level(CelebrationLevel::Off, CelebrationLevel::Off), CelebrationLevel::Off);
+    fn test_celebration_level_max_picks_higher() {
+        assert_eq!(CelebrationLevel::Off.max(CelebrationLevel::Medium), CelebrationLevel::Medium);
+        assert_eq!(CelebrationLevel::Medium.max(CelebrationLevel::Epic), CelebrationLevel::Epic);
+        assert_eq!(CelebrationLevel::Epic.max(CelebrationLevel::Medium), CelebrationLevel::Epic);
+        assert_eq!(CelebrationLevel::Mini.max(CelebrationLevel::Medium), CelebrationLevel::Medium);
+        assert_eq!(CelebrationLevel::Off.max(CelebrationLevel::Off), CelebrationLevel::Off);
     }
 
     #[test]
     fn test_session_cleanup_on_session_end() {
         // Verify that SessionInfo is properly removed when SessionEnd arrives
         let mut sessions: SessionMap = HashMap::new();
-        let info = SessionInfo::new();
+        let info = SessionInfo::default();
         sessions.insert("s1".into(), info);
         assert!(sessions.contains_key("s1"));
 
@@ -524,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_session_commits_tracked_in_session_info() {
-        let mut info = SessionInfo::new();
+        let mut info = SessionInfo::default();
         assert_eq!(info.commits, 0);
         info.commits += 1;
         assert_eq!(info.commits, 1);

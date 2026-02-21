@@ -75,7 +75,7 @@ fn main() {
         Commands::Stats => {
             let s = State::load();
             let (xp_in_level, xp_needed) = cwinner_lib::renderer::xp_progress(s.level, s.xp);
-            let next_xp = cwinner_lib::renderer::xp_for_next_level(s.level);
+            let next_xp = cwinner_lib::renderer::level_threshold(s.level as usize);
             let bar = cwinner_lib::renderer::xp_bar_string(xp_in_level, xp_needed, 20);
 
             println!("Stats:");

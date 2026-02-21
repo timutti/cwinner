@@ -23,22 +23,6 @@ pub struct Event {
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
-/// Interní příkazy daemonovi (status, stats)
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "cmd")]
-pub enum DaemonCommand {
-    #[serde(rename = "status")]
-    Status,
-    #[serde(rename = "stats")]
-    Stats,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct DaemonResponse {
-    pub ok: bool,
-    pub data: serde_json::Value,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -81,19 +81,13 @@ pub fn detect_player() -> Option<Player> {
     None
 }
 
-pub fn play_sound(kind: &SoundKind, sound_pack: &str) {
+pub fn play_sound(kind: &SoundKind, audio_cfg: &AudioConfig) {
     let Some(player) = detect_player() else { return };
     let sounds_dir = dirs::config_dir()
         .map(|d| d.join("cwinner").join("sounds"))
         .unwrap_or_else(|| PathBuf::from("/tmp/cwinner/sounds"));
 
-    let cfg = AudioConfig {
-        enabled: true,
-        sound_pack: sound_pack.to_string(),
-        volume: 0.8,
-    };
-
-    let Some(path) = find_sound_file(kind, &cfg, &sounds_dir) else { return };
+    let Some(path) = find_sound_file(kind, audio_cfg, &sounds_dir) else { return };
 
     let path_str = match path.to_str() {
         Some(s) => s.to_string(),
