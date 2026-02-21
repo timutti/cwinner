@@ -261,12 +261,12 @@ mod tests {
     }
 
     #[test]
-    fn test_process_event_task_completed_adds_xp() {
+    fn test_process_event_task_completed_no_xp_by_default() {
         let mut state = crate::state::State::default();
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::TaskCompleted);
         process_event_with_state(&event, &mut state, &cfg);
-        assert!(state.xp > 0);
+        assert_eq!(state.xp, 0); // task_completed defaults to "off"
     }
 
     #[test]
@@ -294,7 +294,7 @@ mod tests {
         let mut state = crate::state::State::default();
         state.xp = 95; // just below level 2 (100 XP)
         let cfg = crate::config::Config::default();
-        let event = make_event(EventKind::TaskCompleted); // adds 25 XP → level 2
+        let event = make_event(EventKind::GitCommit); // adds 25 XP (milestone) → level 2
 
         process_event_with_state(&event, &mut state, &cfg);
 
@@ -305,8 +305,10 @@ mod tests {
     fn test_streak_bonus_applied_in_process_event() {
         let mut state = crate::state::State::default();
         state.commit_streak_days = 5;
+        let yesterday = chrono::Utc::now().date_naive().pred_opt().unwrap();
+        state.last_commit_date = Some(yesterday);
         let cfg = crate::config::Config::default();
-        let event = make_event(EventKind::TaskCompleted);
+        let event = make_event(EventKind::GitCommit);
 
         process_event_with_state(&event, &mut state, &cfg);
 

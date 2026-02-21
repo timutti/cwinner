@@ -63,7 +63,7 @@ pub fn decide(event: &Event, state: &State, cfg: &Config) -> CelebrationLevel {
     }
 
     match event.event {
-        EventKind::TaskCompleted => CelebrationLevel::from(&cfg.intensity.milestone),
+        EventKind::TaskCompleted => CelebrationLevel::from(&cfg.intensity.task_completed),
         EventKind::GitCommit => CelebrationLevel::from(&cfg.intensity.milestone),
         EventKind::GitPush => CelebrationLevel::from(&cfg.intensity.breakthrough),
         EventKind::SessionEnd => CelebrationLevel::from(&cfg.intensity.milestone),
@@ -130,12 +130,12 @@ mod tests {
     }
 
     #[test]
-    fn test_task_completed_is_milestone() {
+    fn test_task_completed_is_off_by_default() {
         let cfg = Config::default();
         let state = State::default();
         let event = make_event(EventKind::TaskCompleted, None);
         let result = decide(&event, &state, &cfg);
-        assert_eq!(result, CelebrationLevel::Medium);
+        assert_eq!(result, CelebrationLevel::Off);
     }
 
     #[test]
