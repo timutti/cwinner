@@ -78,6 +78,19 @@ impl Default for VisualConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomTrigger {
+    pub name: String,
+    pub pattern: String,
+    pub intensity: Intensity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TriggersConfig {
+    #[serde(default)]
+    pub custom: Vec<CustomTrigger>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
@@ -86,6 +99,8 @@ pub struct Config {
     pub audio: AudioConfig,
     #[serde(default)]
     pub visual: VisualConfig,
+    #[serde(default)]
+    pub triggers: TriggersConfig,
 }
 
 fn default_true() -> bool { true }
@@ -147,5 +162,44 @@ splash_duration_ms = 2000
         let cfg: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(cfg.audio.volume, 0.8);
         assert_eq!(cfg.visual.confetti_duration_ms, 1500);
+    }
+
+    #[test]
+    fn test_default_config_has_no_custom_triggers() {
+        let cfg = Config::default();
+        assert!(cfg.triggers.custom.is_empty());
+    }
+
+    #[test]
+    fn test_parse_toml_with_custom_triggers() {
+        let toml_str = r#"
+[[triggers.custom]]
+name = "deploy"
+pattern = "git push.*production"
+intensity = "epic"
+
+[[triggers.custom]]
+name = "test"
+pattern = "cargo test"
+intensity = "medium"
+"#;
+        let cfg: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.triggers.custom.len(), 2);
+        assert_eq!(cfg.triggers.custom[0].name, "deploy");
+        assert_eq!(cfg.triggers.custom[0].pattern, "git push.*production");
+        assert_eq!(cfg.triggers.custom[0].intensity, Intensity::Epic);
+        assert_eq!(cfg.triggers.custom[1].name, "test");
+        assert_eq!(cfg.triggers.custom[1].pattern, "cargo test");
+        assert_eq!(cfg.triggers.custom[1].intensity, Intensity::Medium);
+    }
+
+    #[test]
+    fn test_parse_toml_without_triggers_section() {
+        let toml_str = r#"
+[intensity]
+routine = "mini"
+"#;
+        let cfg: Config = toml::from_str(toml_str).unwrap();
+        assert!(cfg.triggers.custom.is_empty());
     }
 }

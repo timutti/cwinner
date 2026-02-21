@@ -212,6 +212,12 @@ fn send_hook_event(event: HookEvent, tty_path: &str) {
     if let Some(code) = exit_code {
         metadata.insert("exit_code".into(), serde_json::json!(code));
     }
+    // Pass bash command text for custom trigger matching
+    if let Some(input) = meta.get("tool_input") {
+        if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
+            metadata.insert("command".into(), serde_json::json!(cmd));
+        }
+    }
 
     let e = Event {
         event: event_kind,

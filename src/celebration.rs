@@ -21,11 +21,29 @@ impl From<&Intensity> for CelebrationLevel {
     }
 }
 
+/// Check if a bash command matches any custom trigger pattern (substring match).
+/// Returns the intensity of the first matching trigger, or None.
+pub fn check_custom_triggers(command: &str, cfg: &Config) -> Option<CelebrationLevel> {
+    for trigger in &cfg.triggers.custom {
+        if command.contains(&trigger.pattern) {
+            return Some(CelebrationLevel::from(&trigger.intensity));
+        }
+    }
+    None
+}
+
 pub fn decide(event: &Event, state: &State, cfg: &Config) -> CelebrationLevel {
     // Průlom: bash fail → pass
     if event.event == EventKind::PostToolUse {
         if let Some(tool) = &event.tool {
             if tool == "Bash" {
+                // Check custom triggers first — if a command matches, use trigger's intensity
+                if let Some(command) = event.metadata.get("command").and_then(|v| v.as_str()) {
+                    if let Some(level) = check_custom_triggers(command, cfg) {
+                        return level;
+                    }
+                }
+
                 let exit_code = event.metadata.get("exit_code")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(-1);
@@ -149,5 +167,142 @@ mod tests {
     fn test_no_streak_bonus_below_5_days() {
         let state = State::default(); // streak = 0
         assert_eq!(xp_for_event(&CelebrationLevel::Medium, &state), 25);
+    }
+
+    // --- Custom trigger tests ---
+
+    fn make_bash_event_with_command(command: &str, exit_code: i64) -> Event {
+        let mut meta = HashMap::new();
+        meta.insert("exit_code".into(), serde_json::json!(exit_code));
+        meta.insert("command".into(), serde_json::json!(command));
+        Event {
+            event: EventKind::PostToolUse,
+            tool: Some("Bash".into()),
+            session_id: "test".into(),
+            tty_path: "/dev/null".into(),
+            metadata: meta,
+        }
+    }
+
+    fn config_with_triggers() -> Config {
+        use crate::config::{CustomTrigger, Intensity, TriggersConfig};
+        let mut cfg = Config::default();
+        cfg.triggers = TriggersConfig {
+            custom: vec![
+                CustomTrigger {
+                    name: "deploy".into(),
+                    pattern: "git push".into(),
+                    intensity: Intensity::Epic,
+                },
+                CustomTrigger {
+                    name: "test".into(),
+                    pattern: "cargo test".into(),
+                    intensity: Intensity::Medium,
+                },
+            ],
+        };
+        cfg
+    }
+
+    #[test]
+    fn test_custom_trigger_matches_deploy() {
+        let cfg = config_with_triggers();
+        let state = State::default();
+        let event = make_bash_event_with_command("git push origin production", 0);
+        let result = decide(&event, &state, &cfg);
+        assert_eq!(result, CelebrationLevel::Epic);
+    }
+
+    #[test]
+    fn test_custom_trigger_matches_test() {
+        let cfg = config_with_triggers();
+        let state = State::default();
+        let event = make_bash_event_with_command("cargo test --release", 0);
+        let result = decide(&event, &state, &cfg);
+        assert_eq!(result, CelebrationLevel::Medium);
+    }
+
+    #[test]
+    fn test_custom_trigger_no_match_falls_through() {
+        let cfg = config_with_triggers();
+        let state = State::default();
+        let event = make_bash_event_with_command("ls -la", 0);
+        let result = decide(&event, &state, &cfg);
+        // No trigger matches, exit_code=0, no prev failure → routine (Off by default)
+        assert_eq!(result, CelebrationLevel::Off);
+    }
+
+    #[test]
+    fn test_custom_trigger_overrides_breakthrough() {
+        // Custom trigger takes priority even over fail→pass breakthrough
+        let cfg = config_with_triggers();
+        let mut state = State::default();
+        state.last_bash_exit = Some(1); // previous failure
+        let event = make_bash_event_with_command("cargo test", 0);
+        let result = decide(&event, &state, &cfg);
+        // Custom trigger (medium) overrides breakthrough (epic)
+        assert_eq!(result, CelebrationLevel::Medium);
+    }
+
+    #[test]
+    fn test_custom_trigger_first_match_wins() {
+        use crate::config::{CustomTrigger, Intensity, TriggersConfig};
+        let mut cfg = Config::default();
+        cfg.triggers = TriggersConfig {
+            custom: vec![
+                CustomTrigger {
+                    name: "first".into(),
+                    pattern: "git".into(),
+                    intensity: Intensity::Mini,
+                },
+                CustomTrigger {
+                    name: "second".into(),
+                    pattern: "git push".into(),
+                    intensity: Intensity::Epic,
+                },
+            ],
+        };
+        let state = State::default();
+        let event = make_bash_event_with_command("git push origin main", 0);
+        let result = decide(&event, &state, &cfg);
+        // First trigger matches "git" first
+        assert_eq!(result, CelebrationLevel::Mini);
+    }
+
+    #[test]
+    fn test_custom_trigger_no_triggers_configured() {
+        let cfg = Config::default(); // empty triggers
+        let state = State::default();
+        let event = make_bash_event_with_command("git push origin main", 0);
+        let result = decide(&event, &state, &cfg);
+        // No triggers, exit_code=0, routine → Off
+        assert_eq!(result, CelebrationLevel::Off);
+    }
+
+    #[test]
+    fn test_check_custom_triggers_function_directly() {
+        let cfg = config_with_triggers();
+        assert_eq!(
+            check_custom_triggers("git push origin main", &cfg),
+            Some(CelebrationLevel::Epic)
+        );
+        assert_eq!(
+            check_custom_triggers("cargo test", &cfg),
+            Some(CelebrationLevel::Medium)
+        );
+        assert_eq!(
+            check_custom_triggers("echo hello", &cfg),
+            None
+        );
+    }
+
+    #[test]
+    fn test_custom_trigger_non_bash_tool_not_affected() {
+        let cfg = config_with_triggers();
+        let state = State::default();
+        // Write tool should not trigger custom trigger matching
+        let event = make_event(EventKind::PostToolUse, Some("Write"));
+        let result = decide(&event, &state, &cfg);
+        assert_eq!(result, CelebrationLevel::Off);
     }
 }
