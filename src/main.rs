@@ -149,34 +149,56 @@ fn main() {
 }
 
 fn get_tty() -> String {
-    // Walk up the process tree looking for an ancestor with a /dev/pts/* fd.
-    // Claude Code hooks have redirected fds, so we must climb to find the terminal.
-    let mut pid = std::process::id().to_string();
-    for _ in 0..10 {
-        for fd in [0, 1, 2] {
-            if let Ok(path) = std::fs::read_link(format!("/proc/{}/fd/{}", pid, fd)) {
-                let s = path.to_string_lossy().to_string();
-                if s.starts_with("/dev/pts/") {
+    #[cfg(target_os = "linux")]
+    {
+        // Walk up the process tree looking for an ancestor with a /dev/pts/* fd.
+        // Claude Code hooks have redirected fds, so we must climb to find the terminal.
+        let mut pid = std::process::id().to_string();
+        for _ in 0..10 {
+            for fd in [0, 1, 2] {
+                if let Ok(path) = std::fs::read_link(format!("/proc/{}/fd/{}", pid, fd)) {
+                    let s = path.to_string_lossy().to_string();
+                    if s.starts_with("/dev/pts/") {
+                        return s;
+                    }
+                }
+            }
+            // Move to parent process
+            let stat_path = format!("/proc/{}/stat", pid);
+            if let Ok(stat) = std::fs::read_to_string(&stat_path) {
+                if let Some(ppid) =
+                    stat.split(") ").last().and_then(|s| s.split_whitespace().nth(1))
+                {
+                    if ppid == "0" || ppid == "1" || ppid == pid {
+                        break;
+                    }
+                    pid = ppid.to_string();
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Try ttyname() on inherited file descriptors
+        for fd in [0i32, 1, 2] {
+            let name = unsafe { libc::ttyname(fd) };
+            if !name.is_null() {
+                let s = unsafe { std::ffi::CStr::from_ptr(name) }
+                    .to_string_lossy()
+                    .to_string();
+                if s.starts_with("/dev/ttys") || s.starts_with("/dev/tty") {
                     return s;
                 }
             }
         }
-        // Move to parent process
-        let stat_path = format!("/proc/{}/stat", pid);
-        if let Ok(stat) = std::fs::read_to_string(&stat_path) {
-            if let Some(ppid) = stat.split(") ").last().and_then(|s| s.split_whitespace().nth(1)) {
-                if ppid == "0" || ppid == "1" || ppid == pid {
-                    break;
-                }
-                pid = ppid.to_string();
-            } else {
-                break;
-            }
-        } else {
-            break;
-        }
     }
-    // macOS fallback
+
+    // Universal fallback
     if std::path::Path::new("/dev/tty").exists() {
         return "/dev/tty".into();
     }
@@ -233,4 +255,25 @@ fn send_hook_event(event: HookEvent, tty_path: &str) {
         let _ = stream.write_all(format!("{}\n", json).as_bytes());
     }
     // Pokud daemon neběží, tiše selžeme
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_tty_returns_non_empty() {
+        let tty = get_tty();
+        assert!(!tty.is_empty(), "get_tty() should return a non-empty string");
+    }
+
+    #[test]
+    fn test_get_tty_returns_valid_path() {
+        let tty = get_tty();
+        // Should always return a path starting with /dev/
+        assert!(
+            tty.starts_with("/dev/"),
+            "get_tty() should return a /dev/ path, got: {tty}"
+        );
+    }
 }

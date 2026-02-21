@@ -9,6 +9,10 @@ if [ -S "$SOCKET" ] && command -v socat &>/dev/null; then
     printf '{"event":"GitPush","tool":null,"session_id":"git","tty_path":"%s","metadata":{}}\n' \
         "$TTY_PATH" | socat -t 0.5 - "UNIX-CONNECT:$SOCKET" &>/dev/null &
 elif [ -S "$SOCKET" ] && command -v nc &>/dev/null; then
-    printf '{"event":"GitPush","tool":null,"session_id":"git","tty_path":"%s","metadata":{}}\n' \
-        "$TTY_PATH" | nc -U -q 1 "$SOCKET" &>/dev/null &
+    JSON=$(printf '{"event":"GitPush","tool":null,"session_id":"git","tty_path":"%s","metadata":{}}' "$TTY_PATH")
+    if [ "$(uname)" = "Darwin" ]; then
+        printf '%s\n' "$JSON" | nc -U "$SOCKET" &>/dev/null &
+    else
+        printf '%s\n' "$JSON" | nc -U -q 1 "$SOCKET" &>/dev/null &
+    fi
 fi
