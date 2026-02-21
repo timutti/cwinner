@@ -89,6 +89,9 @@ pub fn update(binary_path: &Path) -> Result<()> {
         bail!("extracted archive does not contain 'cwinner' binary");
     }
 
+    // Stop the daemon before replacing the binary so in-flight state is flushed to disk
+    stop_daemon();
+
     let target_path = std::env::current_exe().unwrap_or_else(|_| binary_path.to_path_buf());
     std::fs::copy(&new_binary, &target_path)
         .with_context(|| format!("failed to replace binary at {}", target_path.display()))?;
@@ -114,6 +117,24 @@ pub fn update(binary_path: &Path) -> Result<()> {
 
     println!("\nUpdated cwinner to {latest_version}!");
     Ok(())
+}
+
+fn stop_daemon() {
+    #[cfg(target_os = "linux")]
+    {
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", "cwinner"])
+            .status();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("launchctl")
+            .args(["unload", &format!(
+                "{}/Library/LaunchAgents/com.cwinner.daemon.plist",
+                std::env::var("HOME").unwrap_or_default()
+            )])
+            .status();
+    }
 }
 
 fn cmd_stdout(program: &str, args: &[&str]) -> Result<String> {
