@@ -10,19 +10,11 @@ pub enum Intensity {
     Epic,
 }
 
-impl Intensity {
-    fn off() -> Self { Self::Off }
-    fn medium() -> Self { Self::Medium }
-    fn epic() -> Self { Self::Epic }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct IntensityConfig {
-    #[serde(default = "Intensity::off")]
     pub routine: Intensity,
-    #[serde(default = "Intensity::medium")]
     pub milestone: Intensity,
-    #[serde(default = "Intensity::epic")]
     pub breakthrough: Intensity,
 }
 
@@ -37,12 +29,10 @@ impl Default for IntensityConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AudioConfig {
-    #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default = "default_sound_pack")]
     pub sound_pack: String,
-    #[serde(default = "default_volume")]
     pub volume: f32,
 }
 
@@ -53,16 +43,12 @@ impl Default for AudioConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct VisualConfig {
-    #[serde(default = "default_true")]
     pub confetti: bool,
-    #[serde(default = "default_true")]
     pub splash_screen: bool,
-    #[serde(default = "default_true")]
     pub progress_bar: bool,
-    #[serde(default = "default_confetti_ms")]
     pub confetti_duration_ms: u64,
-    #[serde(default = "default_splash_ms")]
     pub splash_duration_ms: u64,
 }
 
@@ -102,12 +88,6 @@ pub struct Config {
     #[serde(default)]
     pub triggers: TriggersConfig,
 }
-
-fn default_true() -> bool { true }
-fn default_sound_pack() -> String { "default".into() }
-fn default_volume() -> f32 { 0.8 }
-fn default_confetti_ms() -> u64 { 1500 }
-fn default_splash_ms() -> u64 { 2000 }
 
 impl Config {
     pub fn load() -> Self {

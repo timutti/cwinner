@@ -132,32 +132,13 @@ pub fn format_toast_msg(state: &State, achievement: Option<&str>) -> (String, Co
     }
 }
 
-/// Format the progress bar message for Mini celebrations.
-/// Returns (formatted_string, color).
-pub fn format_progress_bar_msg(state: &State) -> (String, Color) {
-    let next = xp_for_next_level(state.level);
-    if next == u32::MAX {
-        (
-            format!("⚡ {} │ {} XP │ MAX", state.level_name, state.xp),
-            Color::Cyan,
-        )
-    } else {
-        let (xp_in_level, xp_needed) = xp_progress(state.level, state.xp);
-        let bar = xp_bar_string(xp_in_level, xp_needed, 15);
-        (
-            format!("⚡ {} │ {} │ {} XP", state.level_name, bar, state.xp),
-            Color::Cyan,
-        )
-    }
-}
-
 /// Mini celebration: brief progress bar on the bottom line of the terminal.
 /// Uses alternate screen (same as toast) for Claude Code compatibility.
 /// Duration: 3 seconds.
 pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
     let mut tty = open_tty(tty_path)?;
     let (cols, rows) = tty_size(&tty);
-    let (msg, color) = format_progress_bar_msg(state);
+    let (msg, color) = format_toast_msg(state, None);
 
     let pad_width = (cols as usize).saturating_sub(2);
     let bottom_row = rows.saturating_sub(1);
@@ -395,15 +376,15 @@ mod tests {
         }
     }
 
-    // --- Progress bar (Mini celebration) tests ---
+    // --- Mini celebration (format_toast_msg with None) tests ---
 
     #[test]
-    fn test_format_progress_bar_msg_regular() {
+    fn test_format_toast_msg_mini_regular() {
         let mut state = State::default();
         state.xp = 50;
         state.level = 1;
         state.level_name = "Vibe Initiate".into();
-        let (msg, color) = format_progress_bar_msg(&state);
+        let (msg, color) = format_toast_msg(&state, None);
         assert!(msg.contains("⚡"));
         assert!(msg.contains("Vibe Initiate"));
         assert!(msg.contains("50 XP"));
@@ -412,12 +393,12 @@ mod tests {
     }
 
     #[test]
-    fn test_format_progress_bar_msg_mid_level() {
+    fn test_format_toast_msg_mini_mid_level() {
         let mut state = State::default();
         state.xp = 750;
         state.level = 3;
         state.level_name = "Vibe Architect".into();
-        let (msg, color) = format_progress_bar_msg(&state);
+        let (msg, color) = format_toast_msg(&state, None);
         assert!(msg.contains("⚡"));
         assert!(msg.contains("Vibe Architect"));
         assert!(msg.contains("750 XP"));
@@ -428,12 +409,12 @@ mod tests {
     }
 
     #[test]
-    fn test_format_progress_bar_msg_max_level() {
+    fn test_format_toast_msg_mini_max_level() {
         let mut state = State::default();
         state.xp = 80000;
         state.level = 10;
         state.level_name = "Singularity".into();
-        let (msg, color) = format_progress_bar_msg(&state);
+        let (msg, color) = format_toast_msg(&state, None);
         assert!(msg.contains("⚡"));
         assert!(msg.contains("Singularity"));
         assert!(msg.contains("80000 XP"));
@@ -442,13 +423,13 @@ mod tests {
     }
 
     #[test]
-    fn test_format_progress_bar_msg_no_achievement() {
-        // Progress bar never shows achievements (unlike toast)
+    fn test_format_toast_msg_mini_no_achievement() {
+        // Mini celebration (None achievement) never shows trophy
         let mut state = State::default();
         state.xp = 250;
         state.level = 2;
         state.level_name = "Prompt Whisperer".into();
-        let (msg, _) = format_progress_bar_msg(&state);
+        let (msg, _) = format_toast_msg(&state, None);
         // Should not contain trophy emoji
         assert!(!msg.contains("🏆"));
         // Should contain lightning bolt
@@ -456,12 +437,12 @@ mod tests {
     }
 
     #[test]
-    fn test_format_progress_bar_msg_format_structure() {
+    fn test_format_toast_msg_mini_format_structure() {
         let mut state = State::default();
         state.xp = 250;
         state.level = 2;
         state.level_name = "Prompt Whisperer".into();
-        let (msg, _) = format_progress_bar_msg(&state);
+        let (msg, _) = format_toast_msg(&state, None);
         // Verify the │ delimiters are present (3 sections)
         let delimiter_count = msg.matches('│').count();
         assert_eq!(delimiter_count, 2, "Expected 2 │ delimiters, got {}", delimiter_count);

@@ -2,7 +2,7 @@ use crate::config::{Config, Intensity};
 use crate::event::{Event, EventKind};
 use crate::state::State;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CelebrationLevel {
     Off,
     Mini,
