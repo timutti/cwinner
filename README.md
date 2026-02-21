@@ -1,5 +1,8 @@
 # cwinner
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/timutti/cwinner)](https://github.com/timutti/cwinner/releases)
+
 Gamification for [Claude Code](https://claude.ai/code). Tracks your progress, awards XP, and plays sounds on commits, completed tasks, and breakthrough moments.
 
 ## Features
@@ -15,12 +18,32 @@ Gamification for [Claude Code](https://claude.ai/code). Tracks your progress, aw
 
 ## Install
 
+### Quick install (recommended)
+
 ```bash
+curl -fsSL https://raw.githubusercontent.com/timutti/cwinner/master/install.sh | bash
+cwinner install
+```
+
+The curl script downloads the latest release binary for your platform to `~/.local/bin/`.
+
+### From crates.io
+
+```bash
+cargo install cwinner
+cwinner install
+```
+
+### From source
+
+```bash
+git clone https://github.com/timutti/cwinner.git
+cd cwinner
 cargo build --release
 ./target/release/cwinner install
 ```
 
-`install` does everything automatically:
+`cwinner install` does everything automatically:
 - adds hooks to `~/.claude/settings.json`
 - installs git hooks (`post-commit`, `pre-push`)
 - generates a default sound pack to `~/.config/cwinner/sounds/default/`
@@ -97,5 +120,10 @@ The daemon (`cwinnerd`) runs persistently as a systemd user service (Linux) or l
 
 ```bash
 cargo test
+cargo clippy
 cargo build --release
 ```
+
+## License
+
+MIT

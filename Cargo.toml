@@ -2,6 +2,8 @@
 name = "cwinner"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.74.0"
+authors = ["timutti"]
 description = "Gamification overlay for Claude Code — XP, levels, achievements, and celebrations"
 license = "MIT"
 repository = "https://github.com/timutti/cwinner"
