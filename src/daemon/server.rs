@@ -177,8 +177,8 @@ async fn handle_connection(
             (level, achievement_name, is_streak_milestone, snapshot)
         };
 
-        eprintln!("[cwinnerd] event={:?} tool={:?} level={:?} achievement={:?} streak_milestone={:?}",
-            event.event, event.tool, level, achievement_name, is_streak_milestone);
+        eprintln!("[cwinnerd] event={:?} tool={:?} level={:?} achievement={:?} streak_milestone={:?} tty={:?}",
+            event.event, event.tool, level, achievement_name, is_streak_milestone, tty_path);
 
         if level != CelebrationLevel::Off {
             let cfg2 = Arc::clone(&cfg);

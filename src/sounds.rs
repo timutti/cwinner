@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::audio::SoundKind;
 use anyhow::Result;
 
-const SAMPLE_RATE: u32 = 44100;
+const SAMPLE_RATE: u32 = 48000;
 const PI2: f32 = 2.0 * std::f32::consts::PI;
 
 /// A single note with frequency, start time, duration, and amplitude.
@@ -106,15 +106,16 @@ pub fn generate_wav(kind: &SoundKind) -> Vec<u8> {
     encode_wav(&samples, SAMPLE_RATE)
 }
 
+/// Encode mono samples as stereo WAV (HDMI/DisplayPort requires stereo).
 fn encode_wav(samples: &[i16], sample_rate: u32) -> Vec<u8> {
-    let num_channels: u16 = 1;
+    let num_channels: u16 = 2;
     let bits_per_sample: u16 = 16;
     let byte_rate = sample_rate * num_channels as u32 * bits_per_sample as u32 / 8;
     let block_align = num_channels * bits_per_sample / 8;
-    let data_size = (samples.len() * 2) as u32;
+    let data_size = (samples.len() as u32) * 2 * num_channels as u32;
     let chunk_size = 36 + data_size;
 
-    let mut buf = Vec::with_capacity(44 + samples.len() * 2);
+    let mut buf = Vec::with_capacity(44 + data_size as usize);
     // RIFF header
     buf.extend_from_slice(b"RIFF");
     buf.extend_from_slice(&chunk_size.to_le_bytes());
@@ -131,8 +132,11 @@ fn encode_wav(samples: &[i16], sample_rate: u32) -> Vec<u8> {
     // data chunk
     buf.extend_from_slice(b"data");
     buf.extend_from_slice(&data_size.to_le_bytes());
+    // Duplicate each mono sample to left + right channel
     for s in samples {
-        buf.extend_from_slice(&s.to_le_bytes());
+        let bytes = s.to_le_bytes();
+        buf.extend_from_slice(&bytes); // left
+        buf.extend_from_slice(&bytes); // right
     }
     buf
 }

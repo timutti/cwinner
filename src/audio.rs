@@ -45,44 +45,10 @@ pub fn celebration_to_sound(level: &CelebrationLevel, has_achievement: bool, is_
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Player {
-    Afplay,
-    PwPlay,
-    Paplay,
-    Aplay,
-    Mpg123,
-    Mpg321,
-}
-
-pub fn detect_player() -> Option<Player> {
-    let candidates: Vec<(Player, &str)> = if cfg!(target_os = "macos") {
-        vec![(Player::Afplay, "afplay")]
-    } else {
-        vec![
-            (Player::PwPlay, "pw-play"),
-            (Player::Paplay, "paplay"),
-            (Player::Aplay, "aplay"),
-            (Player::Mpg123, "mpg123"),
-            (Player::Mpg321, "mpg321"),
-        ]
-    };
-
-    for (player, cmd) in candidates {
-        if Command::new("which")
-            .arg(cmd)
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-        {
-            return Some(player);
-        }
-    }
-    None
-}
-
+/// Play a sound file using the system audio player.
+/// Linux: `aplay -q` (works with PipeWire/PulseAudio/ALSA).
+/// macOS: `afplay`.
 pub fn play_sound(kind: &SoundKind, audio_cfg: &AudioConfig) {
-    let Some(player) = detect_player() else { return };
     let sounds_dir = dirs::config_dir()
         .map(|d| d.join("cwinner").join("sounds"))
         .unwrap_or_else(|| PathBuf::from("/tmp/cwinner/sounds"));
@@ -94,13 +60,10 @@ pub fn play_sound(kind: &SoundKind, audio_cfg: &AudioConfig) {
         None => return,
     };
 
-    let (cmd, args): (&str, Vec<String>) = match player {
-        Player::Afplay => ("afplay", vec![path_str]),
-        Player::PwPlay => ("pw-play", vec![path_str]),
-        Player::Paplay => ("paplay", vec![path_str]),
-        Player::Aplay => ("aplay", vec!["-q".into(), path_str]),
-        Player::Mpg123 => ("mpg123", vec!["-q".into(), path_str]),
-        Player::Mpg321 => ("mpg321", vec!["-q".into(), path_str]),
+    let (cmd, args): (&str, Vec<String>) = if cfg!(target_os = "macos") {
+        ("afplay", vec![path_str])
+    } else {
+        ("aplay", vec!["-q".into(), path_str])
     };
 
     let _ = Command::new(cmd).args(&args).spawn();
@@ -124,11 +87,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_detect_player_returns_something_or_none() {
-        let _player = detect_player();
-    }
-
-    #[test]
     fn test_sound_file_name() {
         assert_eq!(SoundKind::Mini.name(), "mini");
         assert_eq!(SoundKind::Milestone.name(), "milestone");
@@ -139,7 +97,6 @@ mod tests {
 
     #[test]
     fn test_streak_milestone_uses_streak_sound() {
-        // When a streak milestone is hit, celebration_to_sound should return Streak
         let sound = celebration_to_sound(&CelebrationLevel::Epic, false, true);
         assert!(matches!(sound, Some(SoundKind::Streak)));
     }
@@ -158,14 +115,12 @@ mod tests {
 
     #[test]
     fn test_play_sound_generates_wav_when_no_pack() {
-        // Provide a non-existent sound pack dir
         let tmp = tempfile::tempdir().unwrap();
         let cfg = AudioConfig {
             enabled: true,
             sound_pack: "nonexistent".to_string(),
             volume: 0.8,
         };
-        // Should not panic/error even with no sound files
         let result = find_sound_file(&SoundKind::Mini, &cfg, tmp.path());
         assert!(result.is_some(), "should fall back to generated WAV");
     }
