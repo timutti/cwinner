@@ -50,8 +50,7 @@ pub fn celebration_to_sound(
 }
 
 /// Play a sound file using the system audio player.
-/// Linux: `pw-play` (PipeWire native, works reliably from systemd services),
-///        falls back to `aplay -q`.
+/// Linux: `aplay -q` (ALSA, works with PipeWire/PulseAudio).
 /// macOS: `afplay`.
 pub fn play_sound(kind: &SoundKind, audio_cfg: &AudioConfig) {
     let sounds_dir = dirs::config_dir()
@@ -70,12 +69,7 @@ pub fn play_sound(kind: &SoundKind, audio_cfg: &AudioConfig) {
     let (cmd, args) = if cfg!(target_os = "macos") {
         ("afplay", vec![path_str])
     } else {
-        // Use ALSA pipewire device explicitly — the default ALSA device may
-        // silently fail on HDMI when running from a systemd service.
-        (
-            "aplay",
-            vec!["-D".into(), "pipewire".into(), "-q".into(), path_str],
-        )
+        ("aplay", vec!["-q".into(), path_str])
     };
 
     let _ = Command::new(cmd).args(&args).spawn();

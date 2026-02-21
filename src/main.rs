@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 use cwinner_lib::{install, state::State};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -272,11 +274,65 @@ fn send_hook_event(event: HookEvent, tty_path: &str) {
     };
 
     let socket = socket_path();
-    if let Ok(mut stream) = UnixStream::connect(&socket) {
-        let json = serde_json::to_string(&e).unwrap_or_default();
-        let _ = stream.write_all(format!("{}\n", json).as_bytes());
+
+    // Try connecting; auto-start daemon if not running
+    let mut stream = match UnixStream::connect(&socket) {
+        Ok(s) => s,
+        Err(_) => {
+            if !try_start_daemon(&socket) {
+                return;
+            }
+            match UnixStream::connect(&socket) {
+                Ok(s) => s,
+                Err(_) => return,
+            }
+        }
+    };
+
+    let json = serde_json::to_string(&e).unwrap_or_default();
+    let _ = stream.write_all(format!("{}\n", json).as_bytes());
+}
+
+/// Start the daemon as a detached background process so it inherits the
+/// current session's audio context (PipeWire/PulseAudio).  Systemd user
+/// services run in an isolated cgroup that cannot reach the audio server
+/// on many setups, so session-spawned is the reliable default.
+fn try_start_daemon(socket: &std::path::Path) -> bool {
+    use std::os::unix::net::UnixStream;
+    use std::process::{Command, Stdio};
+
+    // Remove stale socket if present
+    if socket.exists() {
+        let _ = std::fs::remove_file(socket);
     }
-    // Silently fail if daemon is not running
+
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("cwinner"));
+    let res = unsafe {
+        Command::new(&exe)
+            .arg("daemon")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .pre_exec(|| {
+                // New session so daemon survives hook exit
+                libc::setsid();
+                Ok(())
+            })
+            .spawn()
+    };
+
+    if res.is_err() {
+        return false;
+    }
+
+    // Wait up to 1s for daemon to be ready
+    for _ in 0..20 {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        if UnixStream::connect(socket).is_ok() {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]

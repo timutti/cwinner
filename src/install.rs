@@ -223,33 +223,24 @@ fn register_service(binary: &str) -> Result<()> {
 
 #[cfg(target_os = "linux")]
 fn register_systemd(binary: &str) -> Result<()> {
-    let service_dir = dirs::home_dir()
-        .context("no home")?
-        .join(".config/systemd/user");
-    std::fs::create_dir_all(&service_dir)?;
-    let unit = format!(
-        "[Unit]\nDescription=cwinner celebration daemon\nAfter=default.target\n\n[Service]\nExecStart={binary} daemon\nRestart=on-failure\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n"
-    );
-    std::fs::write(service_dir.join("cwinner.service"), unit)?;
+    // Stop any existing systemd service — the daemon now auto-starts from
+    // hooks so it runs in the user's session with working audio context.
     let _ = std::process::Command::new("systemctl")
-        .args(["--user", "daemon-reload"])
-        .status();
-    let _ = std::process::Command::new("systemctl")
-        .args(["--user", "enable", "--now", "cwinner"])
-        .status();
-    let active = std::process::Command::new("systemctl")
-        .args(["--user", "is-active", "cwinner"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if active {
-        println!("✓ systemd user service registered and running");
-    } else {
-        println!("✓ systemd user service registered");
-        println!(
-            "⚠ Service does not appear to be running — check: systemctl --user status cwinner"
-        );
+        .args(["--user", "disable", "--now", "cwinner"])
+        .output();
+
+    // Remove the unit file if it exists (clean up from older installs)
+    if let Some(unit_path) =
+        dirs::home_dir().map(|h| h.join(".config/systemd/user/cwinner.service"))
+    {
+        let _ = std::fs::remove_file(&unit_path);
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "daemon-reload"])
+            .status();
     }
+
+    println!("✓ Daemon auto-starts on first hook event (session-aware audio)");
+    let _ = binary; // reserved for future use
     Ok(())
 }
 
