@@ -83,17 +83,25 @@ async fn handle_connection(
             (level, achievement_name, snapshot)
         };
 
+        eprintln!("[cwinnerd] event={:?} tool={:?} level={:?} achievement={:?}",
+            event.event, event.tool, level, achievement_name);
+
         if level != CelebrationLevel::Off {
             let cfg2 = Arc::clone(&cfg);
             tokio::task::spawn_blocking(move || {
-                // Let Claude Code finish its render cycle after the hook returns.
                 std::thread::sleep(std::time::Duration::from_millis(200));
+                let Some(guard) = crate::renderer::acquire_render_slot() else {
+                    eprintln!("[cwinnerd] SKIPPED (cooldown)");
+                    return;
+                };
+                eprintln!("[cwinnerd] RENDERING level={:?}", level);
                 if cfg2.audio.enabled {
                     if let Some(sound) = celebration_to_sound(&level) {
                         play_sound(&sound, &cfg2.audio.sound_pack);
                     }
                 }
                 render(&tty_path, &level, &state_snapshot, achievement_name.as_deref());
+                crate::renderer::finish_render(guard);
             });
         }
     }
