@@ -29,6 +29,8 @@ pub static REGISTRY: &[Achievement] = &[
     Achievement { id: "level_3",       name: "Vibe Architect",      description: "Reached level 3" },
     Achievement { id: "level_4",       name: "Flow State Master",   description: "Reached level 4" },
     Achievement { id: "level_5",       name: "Claude Sensei",       description: "Reached level 5" },
+    Achievement { id: "level_7",       name: "Vibe Lord",           description: "Reached level 7" },
+    Achievement { id: "level_10",      name: "Singularity",         description: "Reached level 10" },
     // Claude Code basics (4)
     Achievement { id: "first_subagent",     name: "Delegator",       description: "Spawned a subagent with Task tool" },
     Achievement { id: "web_surfer",         name: "Web Surfer",      description: "Used WebSearch" },
@@ -76,6 +78,8 @@ fn is_unlocked(a: &Achievement, state: &State, event: &Event) -> bool {
         "level_3" => state.level >= 3,
         "level_4" => state.level >= 4,
         "level_5" => state.level >= 5,
+        "level_7" => state.level >= 7,
+        "level_10" => state.level >= 10,
         "first_subagent"      => state.tools_used.contains("Task"),
         "web_surfer"          => state.tools_used.contains("WebSearch"),
         "researcher"          => state.tools_used.contains("WebFetch"),
@@ -108,7 +112,7 @@ mod tests {
 
     #[test]
     fn test_registry_has_24_achievements() {
-        assert_eq!(REGISTRY.len(), 24);
+        assert_eq!(REGISTRY.len(), 26);
     }
 
     #[test]

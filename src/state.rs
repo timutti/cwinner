@@ -4,11 +4,16 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 pub const LEVELS: &[(u32, &str)] = &[
-    (0,    "Vibe Initiate"),
-    (100,  "Prompt Whisperer"),
-    (500,  "Vibe Architect"),
-    (1500, "Flow State Master"),
-    (5000, "Claude Sensei"),
+    (0,     "Vibe Initiate"),
+    (100,   "Prompt Whisperer"),
+    (500,   "Vibe Architect"),
+    (1500,  "Flow State Master"),
+    (5000,  "Claude Sensei"),
+    (10000, "Code Whisperer"),
+    (20000, "Vibe Lord"),
+    (35000, "Zen Master"),
+    (50000, "Transcendent"),
+    (75000, "Singularity"),
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

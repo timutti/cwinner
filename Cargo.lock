@@ -207,6 +207,7 @@ dependencies = [
  "clap",
  "crossterm",
  "dirs",
+ "libc",
  "rand",
  "serde",
  "serde_json",

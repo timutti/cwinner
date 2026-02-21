@@ -79,7 +79,11 @@ fn main() {
             let bar = cwinner_lib::renderer::xp_bar_string(xp_in_level, xp_needed, 20);
 
             println!("Stats:");
-            println!("  XP:      {} [{}] → {}", s.xp, bar, next_xp);
+            if next_xp == u32::MAX {
+                println!("  XP:      {} [{}] MAX", s.xp, bar);
+            } else {
+                println!("  XP:      {} [{}] → {}", s.xp, bar, next_xp);
+            }
             println!("  Level:   {} — {}", s.level, s.level_name);
             println!("  Commits: {} │ Streak: {} days", s.commits_total, s.commit_streak_days);
             println!("  Tools used: {}", s.tools_used.len());

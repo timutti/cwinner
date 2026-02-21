@@ -115,12 +115,20 @@ pub fn format_toast_msg(state: &State, achievement: Option<&str>) -> (String, Co
             Color::Yellow,
         )
     } else {
-        let (xp_in_level, xp_needed) = xp_progress(state.level, state.xp);
-        let bar = xp_bar_string(xp_in_level, xp_needed, 15);
-        (
-            format!("⚡ {} │ {} │ {} XP", state.level_name, bar, state.xp),
-            Color::Cyan,
-        )
+        let next = xp_for_next_level(state.level);
+        if next == u32::MAX {
+            (
+                format!("⚡ {} │ {} XP │ MAX", state.level_name, state.xp),
+                Color::Cyan,
+            )
+        } else {
+            let (xp_in_level, xp_needed) = xp_progress(state.level, state.xp);
+            let bar = xp_bar_string(xp_in_level, xp_needed, 15);
+            (
+                format!("⚡ {} │ {} │ {} XP", state.level_name, bar, state.xp),
+                Color::Cyan,
+            )
+        }
     }
 }
 
@@ -276,24 +284,15 @@ mod tests {
         assert_eq!(color, Color::Yellow);
     }
 
-    /// Verify xp_progress returns consistent results for levels 1-10.
-    /// The invariant: xp_in_level + prev_threshold == xp, and
-    /// xp_needed == next_threshold - prev_threshold.
+    /// Verify xp_progress returns consistent results for all levels.
     #[test]
-    fn test_xp_progress_levels_1_to_10() {
-        // LEVELS: (0, _), (100, _), (500, _), (1500, _), (5000, _)
-        // Level 1 → index 0, threshold 0,    next = 100
-        // Level 2 → index 1, threshold 100,  next = 500
-        // Level 3 → index 2, threshold 500,  next = 1500
-        // Level 4 → index 3, threshold 1500, next = 5000
-        // Level 5 → index 4, threshold 5000, next = u32::MAX
-
+    fn test_xp_progress_levels() {
         // Level 1, 50 XP: in_level = 50, needed = 100
         let (in_l, needed) = xp_progress(1, 50);
         assert_eq!(in_l, 50);
         assert_eq!(needed, 100);
 
-        // Level 2, 250 XP: in_level = 250-100 = 150, needed = 500-100 = 400
+        // Level 2, 250 XP: in_level = 150, needed = 400
         let (in_l, needed) = xp_progress(2, 250);
         assert_eq!(in_l, 150);
         assert_eq!(needed, 400);
@@ -303,20 +302,20 @@ mod tests {
         assert_eq!(in_l, 0);
         assert_eq!(needed, 1000);
 
-        // Level 3, 1000 XP: in_level = 500, needed = 1000
-        let (in_l, needed) = xp_progress(3, 1000);
-        assert_eq!(in_l, 500);
-        assert_eq!(needed, 1000);
-
-        // Level 4, 3000 XP: in_level = 1500, needed = 3500
-        let (in_l, needed) = xp_progress(4, 3000);
-        assert_eq!(in_l, 1500);
-        assert_eq!(needed, 3500);
-
-        // Level 5 (max level), 6000 XP: threshold = 5000, next = u32::MAX
+        // Level 5, 6000 XP: in_level = 1000, needed = 5000
         let (in_l, needed) = xp_progress(5, 6000);
         assert_eq!(in_l, 1000);
-        assert_eq!(needed, u32::MAX - 5000);
+        assert_eq!(needed, 5000);
+
+        // Level 7, 25000 XP: in_level = 5000, needed = 15000
+        let (in_l, needed) = xp_progress(7, 25000);
+        assert_eq!(in_l, 5000);
+        assert_eq!(needed, 15000);
+
+        // Level 10 (max), 80000 XP: threshold = 75000, next = u32::MAX
+        let (in_l, needed) = xp_progress(10, 80000);
+        assert_eq!(in_l, 5000);
+        assert_eq!(needed, u32::MAX - 75000);
     }
 
     /// Verify that xp_progress(1, 0) starts clean at level 1.
@@ -338,6 +337,11 @@ mod tests {
             (3, 500), (3, 1000), (3, 1499),
             (4, 1500), (4, 3000), (4, 4999),
             (5, 5000), (5, 9999),
+            (6, 10000), (6, 15000),
+            (7, 20000), (7, 30000),
+            (8, 35000), (8, 45000),
+            (9, 50000), (9, 60000),
+            (10, 75000), (10, 100000),
         ];
         for (level, xp) in cases {
             let (in_l, needed) = xp_progress(level, xp);
