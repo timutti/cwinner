@@ -77,6 +77,18 @@ pub fn finish_render(mut guard: std::sync::MutexGuard<'static, Option<Instant>>)
     *guard = Some(Instant::now());
 }
 
+/// RAII guard that restores terminal state (leave alternate screen + show cursor)
+/// on drop, even if rendering panics or returns early via `?`.
+struct TermGuard<'a> {
+    tty: &'a mut std::fs::File,
+}
+
+impl<'a> Drop for TermGuard<'a> {
+    fn drop(&mut self) {
+        let _ = execute!(self.tty, LeaveAlternateScreen, cursor::Show);
+    }
+}
+
 pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achievement: Option<&str>) {
     match level {
         CelebrationLevel::Off => {}
@@ -140,18 +152,19 @@ pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
     let bottom_row = rows.saturating_sub(1);
 
     execute!(tty, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All))?;
+    let _guard = TermGuard { tty: &mut tty };
 
-    queue!(tty,
+    queue!(_guard.tty,
         cursor::MoveTo(0, bottom_row),
         SetForegroundColor(color),
         Print(format!("{:<width$}", msg, width = pad_width)),
         ResetColor,
     )?;
-    tty.flush()?;
+    _guard.tty.flush()?;
 
     thread::sleep(Duration::from_millis(3000));
 
-    execute!(tty, LeaveAlternateScreen)
+    Ok(())
 }
 
 /// Brief alternate screen overlay — the only safe way to display in a terminal
@@ -166,18 +179,19 @@ pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) ->
     let pad_width = (cols as usize).saturating_sub(2);
 
     execute!(tty, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All))?;
+    let _guard = TermGuard { tty: &mut tty };
 
-    queue!(tty,
+    queue!(_guard.tty,
         cursor::MoveTo(0, mid_row),
         SetForegroundColor(color),
         Print(format!("{:^width$}", msg, width = pad_width)),
         ResetColor,
     )?;
-    tty.flush()?;
+    _guard.tty.flush()?;
 
     thread::sleep(Duration::from_millis(duration));
 
-    execute!(tty, LeaveAlternateScreen)
+    Ok(())
 }
 
 /// Epic celebration: confetti rain → splash box over confetti background.
@@ -188,6 +202,7 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
     let (cols, rows) = tty_size(&tty);
 
     execute!(tty, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All))?;
+    let _guard = TermGuard { tty: &mut tty };
 
     // Phase 1: confetti rain (1.5s)
     let frames = 15u64;
@@ -198,13 +213,13 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
             let row = rng.random_range(0..rows.saturating_sub(2));
             let ch = CONFETTI_CHARS[rng.random_range(0..CONFETTI_CHARS.len())];
             let color = CONFETTI_COLORS[rng.random_range(0..CONFETTI_COLORS.len())];
-            queue!(tty,
+            queue!(_guard.tty,
                 cursor::MoveTo(col, row),
                 SetForegroundColor(color),
                 Print(ch),
             )?;
         }
-        tty.flush()?;
+        _guard.tty.flush()?;
         thread::sleep(Duration::from_millis(frame_ms));
     }
 
@@ -215,7 +230,7 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
     let top = format!("╔{}╗", border);
     let bot = format!("╚{}╝", border);
 
-    queue!(tty,
+    queue!(_guard.tty,
         cursor::MoveTo(0, mid_row.saturating_sub(3)),
         SetForegroundColor(Color::Yellow),
         Print(&top),
@@ -236,10 +251,10 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
         Print(&bot),
         ResetColor,
     )?;
-    tty.flush()?;
+    _guard.tty.flush()?;
     thread::sleep(Duration::from_millis(2000));
 
-    execute!(tty, LeaveAlternateScreen)
+    Ok(())
 }
 
 #[cfg(test)]

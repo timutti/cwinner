@@ -90,8 +90,20 @@ pub fn install(binary_path: &Path) -> Result<()> {
 
 pub fn add_claude_hooks(settings_path: &Path, binary: &str) -> Result<()> {
     let content = std::fs::read_to_string(settings_path).unwrap_or_else(|_| "{}".into());
-    let mut v: serde_json::Value =
-        serde_json::from_str(&content).unwrap_or(serde_json::json!({}));
+    let mut v: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(e) => {
+            // Back up malformed file instead of silently overwriting
+            let backup = settings_path.with_extension("json.bak");
+            std::fs::copy(settings_path, &backup)?;
+            eprintln!(
+                "warning: {} is malformed ({e}), backed up to {}",
+                settings_path.display(),
+                backup.display()
+            );
+            serde_json::json!({})
+        }
+    };
 
     // Ensure hooks object exists
     if !v["hooks"].is_object() {

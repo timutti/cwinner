@@ -56,9 +56,8 @@ pub fn update(binary_path: &Path) -> Result<()> {
     let target = format!("{arch}-{os}");
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/cwinner-{target}.tar.gz");
 
-    // Download to temp dir
-    let tmp_dir = std::env::temp_dir().join("cwinner-update");
-    let _ = std::fs::remove_dir_all(&tmp_dir);
+    // Download to unique temp dir (PID avoids collisions between concurrent runs)
+    let tmp_dir = std::env::temp_dir().join(format!("cwinner-update-{}", std::process::id()));
     std::fs::create_dir_all(&tmp_dir)?;
 
     let tarball = tmp_dir.join("cwinner.tar.gz");

@@ -62,7 +62,7 @@ impl Default for State {
 
 impl State {
     pub fn add_xp(&mut self, amount: u32) {
-        self.xp += amount;
+        self.xp = self.xp.saturating_add(amount);
         self.update_level();
     }
 
@@ -125,7 +125,10 @@ impl State {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, serde_json::to_string_pretty(self)?)?;
+        let data = serde_json::to_string_pretty(self)?;
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, &data)?;
+        std::fs::rename(&tmp_path, path)?;
         Ok(())
     }
 

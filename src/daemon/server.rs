@@ -104,12 +104,27 @@ pub async fn run() -> anyhow::Result<()> {
     }
 }
 
+/// Validate that a tty_path looks like a real terminal device.
+fn is_valid_tty(path: &str) -> bool {
+    use std::os::unix::fs::FileTypeExt;
+    if path == "/dev/null" {
+        return true;
+    }
+    if !path.starts_with("/dev/pts/") && !path.starts_with("/dev/tty") {
+        return false;
+    }
+    std::fs::metadata(path)
+        .map(|m| m.file_type().is_char_device())
+        .unwrap_or(false)
+}
+
 async fn handle_connection(
     mut stream: UnixStream,
     state: Arc<Mutex<State>>,
     cfg: Arc<Config>,
     sessions: Arc<Mutex<SessionMap>>,
 ) -> anyhow::Result<()> {
+    const MAX_MSG_LEN: usize = 65536;
     let mut buf = Vec::new();
     let mut tmp = [0u8; 4096];
     loop {
@@ -118,17 +133,24 @@ async fn handle_connection(
             break;
         }
         buf.extend_from_slice(&tmp[..n]);
+        if buf.len() > MAX_MSG_LEN {
+            anyhow::bail!("message too large (>{MAX_MSG_LEN} bytes)");
+        }
         if buf.contains(&b'\n') {
             break;
         }
     }
 
-    let line = String::from_utf8_lossy(&buf);
-    let line = line.trim();
+    let raw = String::from_utf8_lossy(&buf);
+    let line = raw.lines().next().unwrap_or("").trim();
 
     // Eventy — fire-and-forget
     if let Ok(event) = serde_json::from_str::<Event>(line) {
         let tty_path = event.tty_path.clone();
+        if !is_valid_tty(&tty_path) {
+            eprintln!("[cwinnerd] rejected invalid tty_path: {tty_path:?}");
+            return Ok(());
+        }
 
         // Track session info (commits + duration) for SessionEnd epic logic
         let (session_commit_count, duration_milestone_level) = {
