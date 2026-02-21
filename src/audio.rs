@@ -15,16 +15,20 @@ pub enum SoundKind {
 impl SoundKind {
     pub fn name(&self) -> &'static str {
         match self {
-            SoundKind::Mini      => "mini",
+            SoundKind::Mini => "mini",
             SoundKind::Milestone => "milestone",
-            SoundKind::Epic      => "epic",
-            SoundKind::Fanfare   => "fanfare",
-            SoundKind::Streak    => "streak",
+            SoundKind::Epic => "epic",
+            SoundKind::Fanfare => "fanfare",
+            SoundKind::Streak => "streak",
         }
     }
 }
 
-pub fn celebration_to_sound(level: &CelebrationLevel, has_achievement: bool, is_streak_milestone: bool) -> Option<SoundKind> {
+pub fn celebration_to_sound(
+    level: &CelebrationLevel,
+    has_achievement: bool,
+    is_streak_milestone: bool,
+) -> Option<SoundKind> {
     match level {
         CelebrationLevel::Off => None,
         CelebrationLevel::Mini => Some(SoundKind::Mini),
@@ -46,24 +50,32 @@ pub fn celebration_to_sound(level: &CelebrationLevel, has_achievement: bool, is_
 }
 
 /// Play a sound file using the system audio player.
-/// Linux: `aplay -q` (works with PipeWire/PulseAudio/ALSA).
+/// Linux: `pw-play` (PipeWire native, works reliably from systemd services),
+///        falls back to `aplay -q`.
 /// macOS: `afplay`.
 pub fn play_sound(kind: &SoundKind, audio_cfg: &AudioConfig) {
     let sounds_dir = dirs::config_dir()
         .map(|d| d.join("cwinner").join("sounds"))
         .unwrap_or_else(|| PathBuf::from("/tmp/cwinner/sounds"));
 
-    let Some(path) = find_sound_file(kind, audio_cfg, &sounds_dir) else { return };
+    let Some(path) = find_sound_file(kind, audio_cfg, &sounds_dir) else {
+        return;
+    };
 
     let path_str = match path.to_str() {
         Some(s) => s.to_string(),
         None => return,
     };
 
-    let (cmd, args): (&str, Vec<String>) = if cfg!(target_os = "macos") {
+    let (cmd, args) = if cfg!(target_os = "macos") {
         ("afplay", vec![path_str])
     } else {
-        ("aplay", vec!["-q".into(), path_str])
+        // Use ALSA pipewire device explicitly — the default ALSA device may
+        // silently fail on HDMI when running from a systemd service.
+        (
+            "aplay",
+            vec!["-D".into(), "pipewire".into(), "-q".into(), path_str],
+        )
     };
 
     let _ = Command::new(cmd).args(&args).spawn();

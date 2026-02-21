@@ -73,7 +73,12 @@ pub fn update(binary_path: &Path) -> Result<()> {
 
     // Extract
     let status = Command::new("tar")
-        .args(["xzf", tarball.to_str().unwrap(), "-C", tmp_dir.to_str().unwrap()])
+        .args([
+            "xzf",
+            tarball.to_str().unwrap(),
+            "-C",
+            tmp_dir.to_str().unwrap(),
+        ])
         .status()
         .context("failed to run tar")?;
     if !status.success() {
@@ -128,10 +133,13 @@ fn stop_daemon() {
     #[cfg(target_os = "macos")]
     {
         let _ = Command::new("launchctl")
-            .args(["unload", &format!(
-                "{}/Library/LaunchAgents/com.cwinner.daemon.plist",
-                std::env::var("HOME").unwrap_or_default()
-            )])
+            .args([
+                "unload",
+                &format!(
+                    "{}/Library/LaunchAgents/com.cwinner.daemon.plist",
+                    std::env::var("HOME").unwrap_or_default()
+                ),
+            ])
             .status();
     }
 }

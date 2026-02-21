@@ -26,16 +26,29 @@ pub fn level_threshold(index: usize) -> u32 {
 }
 const CONFETTI_CHARS: &[char] = &['✦', '★', '♦', '●', '*', '+', '#', '✿', '❋'];
 const CONFETTI_COLORS: &[Color] = &[
-    Color::Red, Color::Green, Color::Yellow, Color::Blue,
-    Color::Magenta, Color::Cyan, Color::White,
+    Color::Red,
+    Color::Green,
+    Color::Yellow,
+    Color::Blue,
+    Color::Magenta,
+    Color::Cyan,
+    Color::White,
 ];
 
 pub fn xp_bar_string(current_xp: u32, next_xp: u32, width: usize) -> String {
-    let ratio = if next_xp == 0 { 1.0 } else { current_xp as f64 / next_xp as f64 };
+    let ratio = if next_xp == 0 {
+        1.0
+    } else {
+        current_xp as f64 / next_xp as f64
+    };
     let filled = ((ratio * width as f64).round() as usize).min(width);
     let mut s = String::new();
-    for _ in 0..filled { s.push('█'); }
-    for _ in filled..width { s.push('░'); }
+    for _ in 0..filled {
+        s.push('█');
+    }
+    for _ in filled..width {
+        s.push('░');
+    }
     s
 }
 
@@ -92,10 +105,18 @@ impl<'a> Drop for TermGuard<'a> {
 pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achievement: Option<&str>) {
     match level {
         CelebrationLevel::Off => {}
-        CelebrationLevel::Mini => { let _ = render_progress_bar(tty_path, state); }
-        CelebrationLevel::Medium => { let _ = render_toast(tty_path, state, achievement); }
+        CelebrationLevel::Mini => {
+            let _ = render_progress_bar(tty_path, state);
+        }
+        CelebrationLevel::Medium => {
+            let _ = render_toast(tty_path, state, achievement);
+        }
         CelebrationLevel::Epic => {
-            let _ = render_epic(tty_path, state, achievement.unwrap_or("ACHIEVEMENT UNLOCKED!"));
+            let _ = render_epic(
+                tty_path,
+                state,
+                achievement.unwrap_or("ACHIEVEMENT UNLOCKED!"),
+            );
         }
     }
 }
@@ -151,10 +172,16 @@ pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
     let pad_width = (cols as usize).saturating_sub(2);
     let bottom_row = rows.saturating_sub(1);
 
-    execute!(tty, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All))?;
+    execute!(
+        tty,
+        EnterAlternateScreen,
+        cursor::Hide,
+        Clear(ClearType::All)
+    )?;
     let _guard = TermGuard { tty: &mut tty };
 
-    queue!(_guard.tty,
+    queue!(
+        _guard.tty,
         cursor::MoveTo(0, bottom_row),
         SetForegroundColor(color),
         Print(format!("{:<width$}", msg, width = pad_width)),
@@ -173,15 +200,25 @@ pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) ->
     let mut tty = open_tty(tty_path)?;
     let (cols, rows) = tty_size(&tty);
     let (msg, color) = format_toast_msg(state, achievement);
-    let duration = if achievement.is_some() { 2500u64 } else { 1500u64 };
+    let duration = if achievement.is_some() {
+        2500u64
+    } else {
+        1500u64
+    };
 
     let mid_row = rows / 2;
     let pad_width = (cols as usize).saturating_sub(2);
 
-    execute!(tty, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All))?;
+    execute!(
+        tty,
+        EnterAlternateScreen,
+        cursor::Hide,
+        Clear(ClearType::All)
+    )?;
     let _guard = TermGuard { tty: &mut tty };
 
-    queue!(_guard.tty,
+    queue!(
+        _guard.tty,
         cursor::MoveTo(0, mid_row),
         SetForegroundColor(color),
         Print(format!("{:^width$}", msg, width = pad_width)),
@@ -201,7 +238,12 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
     let mut rng = rand::rng();
     let (cols, rows) = tty_size(&tty);
 
-    execute!(tty, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All))?;
+    execute!(
+        tty,
+        EnterAlternateScreen,
+        cursor::Hide,
+        Clear(ClearType::All)
+    )?;
     let _guard = TermGuard { tty: &mut tty };
 
     // Phase 1: confetti rain (1.5s)
@@ -213,7 +255,8 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
             let row = rng.random_range(0..rows.saturating_sub(2));
             let ch = CONFETTI_CHARS[rng.random_range(0..CONFETTI_CHARS.len())];
             let color = CONFETTI_COLORS[rng.random_range(0..CONFETTI_COLORS.len())];
-            queue!(_guard.tty,
+            queue!(
+                _guard.tty,
                 cursor::MoveTo(col, row),
                 SetForegroundColor(color),
                 Print(ch),
@@ -230,7 +273,8 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
     let top = format!("╔{}╗", border);
     let bot = format!("╚{}╝", border);
 
-    queue!(_guard.tty,
+    queue!(
+        _guard.tty,
         cursor::MoveTo(0, mid_row.saturating_sub(3)),
         SetForegroundColor(Color::Yellow),
         Print(&top),
@@ -241,9 +285,11 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
         Print(format!("║{:^width$}║", achievement, width = inner_width)),
         cursor::MoveTo(0, mid_row),
         SetForegroundColor(Color::Cyan),
-        Print(format!("║{:^width$}║",
+        Print(format!(
+            "║{:^width$}║",
             format!("Lvl {} {} ✦ {} XP", state.level, state.level_name, state.xp),
-            width = inner_width)),
+            width = inner_width
+        )),
         cursor::MoveTo(0, mid_row + 1),
         SetForegroundColor(Color::Yellow),
         Print(format!("║{:^width$}║", "", width = inner_width)),
@@ -364,26 +410,53 @@ mod tests {
         // For several (level, xp) combos, ensure xp_progress gives a single answer
         // that both call sites now use.
         let cases = vec![
-            (1, 0), (1, 50), (1, 99),
-            (2, 100), (2, 250), (2, 499),
-            (3, 500), (3, 1000), (3, 1499),
-            (4, 1500), (4, 3000), (4, 4999),
-            (5, 5000), (5, 9999),
-            (6, 10000), (6, 15000),
-            (7, 20000), (7, 30000),
-            (8, 35000), (8, 45000),
-            (9, 50000), (9, 60000),
-            (10, 75000), (10, 100000),
+            (1, 0),
+            (1, 50),
+            (1, 99),
+            (2, 100),
+            (2, 250),
+            (2, 499),
+            (3, 500),
+            (3, 1000),
+            (3, 1499),
+            (4, 1500),
+            (4, 3000),
+            (4, 4999),
+            (5, 5000),
+            (5, 9999),
+            (6, 10000),
+            (6, 15000),
+            (7, 20000),
+            (7, 30000),
+            (8, 35000),
+            (8, 45000),
+            (9, 50000),
+            (9, 60000),
+            (10, 75000),
+            (10, 100000),
         ];
         for (level, xp) in cases {
             let (in_l, needed) = xp_progress(level, xp);
             // Basic sanity: in_level should be < needed (unless max level with huge XP)
-            assert!(in_l <= needed || level as usize >= LEVELS.len(),
-                "level={}, xp={}: in_level {} > needed {}", level, xp, in_l, needed);
+            assert!(
+                in_l <= needed || level as usize >= LEVELS.len(),
+                "level={}, xp={}: in_level {} > needed {}",
+                level,
+                xp,
+                in_l,
+                needed
+            );
             // xp_in_level + prev_threshold == xp
             let prev = level_threshold((level.saturating_sub(1)) as usize);
-            assert_eq!(in_l + prev, xp,
-                "level={}, xp={}: in_level {} + prev {} != xp", level, xp, in_l, prev);
+            assert_eq!(
+                in_l + prev,
+                xp,
+                "level={}, xp={}: in_level {} + prev {} != xp",
+                level,
+                xp,
+                in_l,
+                prev
+            );
         }
     }
 
@@ -456,6 +529,10 @@ mod tests {
         let (msg, _) = format_toast_msg(&state, None);
         // Verify the │ delimiters are present (3 sections)
         let delimiter_count = msg.matches('│').count();
-        assert_eq!(delimiter_count, 2, "Expected 2 │ delimiters, got {}", delimiter_count);
+        assert_eq!(
+            delimiter_count, 2,
+            "Expected 2 │ delimiters, got {}",
+            delimiter_count
+        );
     }
 }

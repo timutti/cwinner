@@ -87,7 +87,10 @@ fn main() {
                 println!("  XP:      {} [{}] → {}", s.xp, bar, next_xp);
             }
             println!("  Level:   {} — {}", s.level, s.level_name);
-            println!("  Commits: {} │ Streak: {} days", s.commits_total, s.commit_streak_days);
+            println!(
+                "  Commits: {} │ Streak: {} days",
+                s.commits_total, s.commit_streak_days
+            );
             println!("  Tools used: {}", s.tools_used.len());
             println!();
 
@@ -99,9 +102,16 @@ fn main() {
             if unlocked.is_empty() {
                 println!("Achievements: none yet");
             } else {
-                println!("Achievements ({}/{}):", unlocked.len(), cwinner_lib::achievements::REGISTRY.len());
+                println!(
+                    "Achievements ({}/{}):",
+                    unlocked.len(),
+                    cwinner_lib::achievements::REGISTRY.len()
+                );
                 for id in unlocked {
-                    if let Some(a) = cwinner_lib::achievements::REGISTRY.iter().find(|a| a.id == id.as_str()) {
+                    if let Some(a) = cwinner_lib::achievements::REGISTRY
+                        .iter()
+                        .find(|a| a.id == id.as_str())
+                    {
                         println!("  ✓ {} — {}", a.name, a.description);
                     } else {
                         println!("  ✓ {}", id);
@@ -110,7 +120,8 @@ fn main() {
             }
 
             println!();
-            let locked: Vec<_> = cwinner_lib::achievements::REGISTRY.iter()
+            let locked: Vec<_> = cwinner_lib::achievements::REGISTRY
+                .iter()
                 .filter(|a| !unlocked_set.contains(a.id))
                 .collect();
             if !locked.is_empty() {
@@ -175,8 +186,10 @@ fn get_tty() -> String {
             // Move to parent process
             let stat_path = format!("/proc/{}/stat", pid);
             if let Ok(stat) = std::fs::read_to_string(&stat_path) {
-                if let Some(ppid) =
-                    stat.split(") ").last().and_then(|s| s.split_whitespace().nth(1))
+                if let Some(ppid) = stat
+                    .split(") ")
+                    .last()
+                    .and_then(|s| s.split_whitespace().nth(1))
                 {
                     if ppid == "0" || ppid == "1" || ppid == pid {
                         break;
@@ -273,7 +286,10 @@ mod tests {
     #[test]
     fn test_get_tty_returns_non_empty() {
         let tty = get_tty();
-        assert!(!tty.is_empty(), "get_tty() should return a non-empty string");
+        assert!(
+            !tty.is_empty(),
+            "get_tty() should return a non-empty string"
+        );
     }
 
     #[test]

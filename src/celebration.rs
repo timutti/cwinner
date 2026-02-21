@@ -44,7 +44,9 @@ pub fn decide(event: &Event, state: &State, cfg: &Config) -> CelebrationLevel {
                     }
                 }
 
-                let exit_code = event.metadata.get("exit_code")
+                let exit_code = event
+                    .metadata
+                    .get("exit_code")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(-1);
                 let prev_failed = state.last_bash_exit.map(|c| c != 0).unwrap_or(false);
@@ -290,10 +292,7 @@ mod tests {
             check_custom_triggers("cargo test", &cfg),
             Some(CelebrationLevel::Medium)
         );
-        assert_eq!(
-            check_custom_triggers("echo hello", &cfg),
-            None
-        );
+        assert_eq!(check_custom_triggers("echo hello", &cfg), None);
     }
 
     #[test]

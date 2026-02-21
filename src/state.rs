@@ -14,11 +14,11 @@ pub struct CommitResult {
 }
 
 pub const LEVELS: &[(u32, &str)] = &[
-    (0,     "Vibe Initiate"),
-    (100,   "Prompt Whisperer"),
-    (500,   "Vibe Architect"),
-    (1500,  "Flow State Master"),
-    (5000,  "Claude Sensei"),
+    (0, "Vibe Initiate"),
+    (100, "Prompt Whisperer"),
+    (500, "Vibe Architect"),
+    (1500, "Flow State Master"),
+    (5000, "Claude Sensei"),
     (10000, "Code Whisperer"),
     (20000, "Vibe Lord"),
     (35000, "Zen Master"),
@@ -99,7 +99,10 @@ impl State {
         } else {
             None
         };
-        CommitResult { first_today, streak_milestone }
+        CommitResult {
+            first_today,
+            streak_milestone,
+        }
     }
 
     /// Returns true if this is the first use of this tool

@@ -40,7 +40,11 @@ pub struct AudioConfig {
 
 impl Default for AudioConfig {
     fn default() -> Self {
-        Self { enabled: true, sound_pack: "default".into(), volume: 0.8 }
+        Self {
+            enabled: true,
+            sound_pack: "default".into(),
+            volume: 0.8,
+        }
     }
 }
 

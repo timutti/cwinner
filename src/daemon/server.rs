@@ -1,5 +1,5 @@
-use crate::audio::{celebration_to_sound, play_sound};
 use crate::achievements::check_achievements;
+use crate::audio::{celebration_to_sound, play_sound};
 use crate::celebration::{decide, xp_for_event, CelebrationLevel};
 use crate::config::Config;
 use crate::event::{Event, EventKind};
@@ -14,9 +14,9 @@ use tokio::net::{UnixListener, UnixStream};
 
 /// Duration milestones in minutes and their celebration levels
 pub const DURATION_MILESTONES: &[(u64, CelebrationLevel)] = &[
-    (60, CelebrationLevel::Medium),   // 1 hour
-    (180, CelebrationLevel::Medium),  // 3 hours
-    (480, CelebrationLevel::Epic),    // 8 hours
+    (60, CelebrationLevel::Medium),  // 1 hour
+    (180, CelebrationLevel::Medium), // 3 hours
+    (480, CelebrationLevel::Epic),   // 8 hours
 ];
 
 /// Runtime-only session tracking (not persisted to disk)
@@ -45,9 +45,7 @@ impl SessionInfo {
         let mut best_level: Option<CelebrationLevel> = None;
 
         for &(minutes, ref level) in DURATION_MILESTONES {
-            if elapsed_minutes >= minutes
-                && !self.duration_milestones_fired.contains(&minutes)
-            {
+            if elapsed_minutes >= minutes && !self.duration_milestones_fired.contains(&minutes) {
                 self.duration_milestones_fired.push(minutes);
                 // Keep the highest-priority level (Epic > Medium > Mini > Off)
                 best_level = Some(best_level.map_or(level.clone(), |b| b.max(level.clone())));
@@ -86,8 +84,7 @@ pub async fn run() -> anyhow::Result<()> {
     let listener = UnixListener::bind(&path)?;
     let state = Arc::new(Mutex::new(State::load()));
     let cfg = Arc::new(Config::load());
-    let sessions: Arc<Mutex<SessionMap>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let sessions: Arc<Mutex<SessionMap>> = Arc::new(Mutex::new(HashMap::new()));
 
     eprintln!("cwinnerd listening on {}", path.display());
 
@@ -158,14 +155,12 @@ async fn handle_connection(
 
             if event.event == EventKind::SessionEnd {
                 // Check duration milestones one last time, then remove session
-                let mut info = sm.remove(&event.session_id)
-                    .unwrap_or_default();
+                let mut info = sm.remove(&event.session_id).unwrap_or_default();
                 let dur_level = info.check_duration_milestones();
                 (info.commits, dur_level)
             } else {
                 // Ensure session exists
-                let info = sm.entry(event.session_id.clone())
-                    .or_default();
+                let info = sm.entry(event.session_id.clone()).or_default();
 
                 if event.event == EventKind::GitCommit {
                     info.commits += 1;
@@ -212,11 +207,20 @@ async fn handle_connection(
                 };
                 eprintln!("[cwinnerd] RENDERING level={:?}", level);
                 if cfg2.audio.enabled {
-                    if let Some(sound) = celebration_to_sound(&level, achievement_name.is_some(), is_streak_milestone) {
+                    if let Some(sound) = celebration_to_sound(
+                        &level,
+                        achievement_name.is_some(),
+                        is_streak_milestone,
+                    ) {
                         play_sound(&sound, &cfg2.audio);
                     }
                 }
-                render(&tty_path, &level, &state_snapshot, achievement_name.as_deref());
+                render(
+                    &tty_path,
+                    &level,
+                    &state_snapshot,
+                    achievement_name.as_deref(),
+                );
                 crate::renderer::finish_render(guard);
             });
         }
@@ -308,7 +312,10 @@ mod tests {
 
         process_event_with_state(&event, &mut state, &cfg);
 
-        assert!(state.achievements_unlocked.iter().any(|id| id == "first_commit"));
+        assert!(state
+            .achievements_unlocked
+            .iter()
+            .any(|id| id == "first_commit"));
     }
 
     #[test]
@@ -473,11 +480,26 @@ mod tests {
 
     #[test]
     fn test_celebration_level_max_picks_higher() {
-        assert_eq!(CelebrationLevel::Off.max(CelebrationLevel::Medium), CelebrationLevel::Medium);
-        assert_eq!(CelebrationLevel::Medium.max(CelebrationLevel::Epic), CelebrationLevel::Epic);
-        assert_eq!(CelebrationLevel::Epic.max(CelebrationLevel::Medium), CelebrationLevel::Epic);
-        assert_eq!(CelebrationLevel::Mini.max(CelebrationLevel::Medium), CelebrationLevel::Medium);
-        assert_eq!(CelebrationLevel::Off.max(CelebrationLevel::Off), CelebrationLevel::Off);
+        assert_eq!(
+            CelebrationLevel::Off.max(CelebrationLevel::Medium),
+            CelebrationLevel::Medium
+        );
+        assert_eq!(
+            CelebrationLevel::Medium.max(CelebrationLevel::Epic),
+            CelebrationLevel::Epic
+        );
+        assert_eq!(
+            CelebrationLevel::Epic.max(CelebrationLevel::Medium),
+            CelebrationLevel::Epic
+        );
+        assert_eq!(
+            CelebrationLevel::Mini.max(CelebrationLevel::Medium),
+            CelebrationLevel::Medium
+        );
+        assert_eq!(
+            CelebrationLevel::Off.max(CelebrationLevel::Off),
+            CelebrationLevel::Off
+        );
     }
 
     #[test]
