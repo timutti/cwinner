@@ -6,11 +6,11 @@ use anyhow::Result;
 /// Frequencies and durations for each sound type
 fn params(kind: &SoundKind) -> (f32, f32) {
     match kind {
-        SoundKind::Mini      => (880.0, 0.3),   // A5, short blip
-        SoundKind::Milestone => (523.25, 0.8),   // C5, medium chime
-        SoundKind::Epic      => (659.25, 1.2),   // E5, triumphant
-        SoundKind::Fanfare   => (783.99, 1.5),   // G5, fanfare
-        SoundKind::Streak    => (1046.5, 1.5),   // C6, streak celebration
+        SoundKind::Mini      => (880.0, 0.3),    // A5, short blip
+        SoundKind::Milestone => (523.25, 0.8),    // C5, medium chime
+        SoundKind::Epic      => (659.25, 1.2),    // E5, triumphant
+        SoundKind::Fanfare   => (783.99, 1.5),    // G5, fanfare
+        SoundKind::Streak    => (1046.5, 1.5),    // C6, streak celebration
     }
 }
 
@@ -116,5 +116,12 @@ mod tests {
         for name in ["mini.wav", "milestone.wav", "epic.wav", "fanfare.wav", "streak.wav"] {
             assert!(tmp.path().join(name).exists(), "{} missing", name);
         }
+    }
+
+    #[test]
+    fn test_streak_sound_params() {
+        let (freq, dur) = params(&SoundKind::Streak);
+        assert!((freq - 1046.5).abs() < 0.1, "Streak frequency should be C6 (1046.5)");
+        assert!((dur - 1.5).abs() < 0.01, "Streak duration should be 1.5s");
     }
 }

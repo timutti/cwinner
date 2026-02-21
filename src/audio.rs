@@ -24,12 +24,24 @@ impl SoundKind {
     }
 }
 
-pub fn celebration_to_sound(level: &CelebrationLevel) -> Option<SoundKind> {
+pub fn celebration_to_sound(level: &CelebrationLevel, has_achievement: bool, is_streak_milestone: bool) -> Option<SoundKind> {
     match level {
         CelebrationLevel::Off => None,
         CelebrationLevel::Mini => Some(SoundKind::Mini),
-        CelebrationLevel::Medium => Some(SoundKind::Milestone),
-        CelebrationLevel::Epic => Some(SoundKind::Fanfare),
+        CelebrationLevel::Medium => {
+            if has_achievement {
+                Some(SoundKind::Epic)
+            } else {
+                Some(SoundKind::Milestone)
+            }
+        }
+        CelebrationLevel::Epic => {
+            if is_streak_milestone {
+                Some(SoundKind::Streak)
+            } else {
+                Some(SoundKind::Fanfare)
+            }
+        }
     }
 }
 
@@ -129,6 +141,25 @@ mod tests {
         assert_eq!(SoundKind::Epic.name(), "epic");
         assert_eq!(SoundKind::Fanfare.name(), "fanfare");
         assert_eq!(SoundKind::Streak.name(), "streak");
+    }
+
+    #[test]
+    fn test_streak_milestone_uses_streak_sound() {
+        // When a streak milestone is hit, celebration_to_sound should return Streak
+        let sound = celebration_to_sound(&CelebrationLevel::Epic, false, true);
+        assert!(matches!(sound, Some(SoundKind::Streak)));
+    }
+
+    #[test]
+    fn test_non_streak_epic_still_uses_fanfare() {
+        let sound = celebration_to_sound(&CelebrationLevel::Epic, false, false);
+        assert!(matches!(sound, Some(SoundKind::Fanfare)));
+    }
+
+    #[test]
+    fn test_achievement_medium_still_uses_epic_sound() {
+        let sound = celebration_to_sound(&CelebrationLevel::Medium, true, false);
+        assert!(matches!(sound, Some(SoundKind::Epic)));
     }
 
     #[test]

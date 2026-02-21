@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::event::{DaemonCommand, DaemonResponse, Event, EventKind};
 use crate::renderer::render;
 use crate::state::State;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -27,6 +28,8 @@ pub async fn run() -> anyhow::Result<()> {
     let listener = UnixListener::bind(&path)?;
     let state = Arc::new(Mutex::new(State::load()));
     let cfg = Arc::new(Config::load());
+    let session_commits: Arc<Mutex<HashMap<String, u32>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 
     eprintln!("cwinnerd listening on {}", path.display());
 
@@ -34,8 +37,9 @@ pub async fn run() -> anyhow::Result<()> {
         let (stream, _) = listener.accept().await?;
         let state = Arc::clone(&state);
         let cfg = Arc::clone(&cfg);
+        let session_commits = Arc::clone(&session_commits);
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(stream, state, cfg).await {
+            if let Err(e) = handle_connection(stream, state, cfg, session_commits).await {
                 eprintln!("connection error: {e}");
             }
         });
@@ -46,6 +50,7 @@ async fn handle_connection(
     mut stream: UnixStream,
     state: Arc<Mutex<State>>,
     cfg: Arc<Config>,
+    session_commits: Arc<Mutex<HashMap<String, u32>>>,
 ) -> anyhow::Result<()> {
     let mut buf = Vec::new();
     let mut tmp = [0u8; 4096];
@@ -74,17 +79,38 @@ async fn handle_connection(
     // Eventy — fire-and-forget
     if let Ok(event) = serde_json::from_str::<Event>(line) {
         let tty_path = event.tty_path.clone();
-        // Process event under a single mutex lock, then clone state for rendering
-        let (level, achievement_name, state_snapshot) = {
-            let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-            let (level, achievement_name) = process_event_with_state(&event, &mut s, &cfg);
-            s.save();
-            let snapshot = s.clone();
-            (level, achievement_name, snapshot)
+
+        // Track session commits for SessionEnd epic logic
+        let session_commit_count = if event.event == EventKind::GitCommit {
+            let mut sc = session_commits.lock().unwrap_or_else(|e| e.into_inner());
+            let count = sc.entry(event.session_id.clone()).or_insert(0);
+            *count += 1;
+            *count
+        } else if event.event == EventKind::SessionEnd {
+            let mut sc = session_commits.lock().unwrap_or_else(|e| e.into_inner());
+            sc.remove(&event.session_id).unwrap_or(0)
+        } else {
+            0
         };
 
-        eprintln!("[cwinnerd] event={:?} tool={:?} level={:?} achievement={:?}",
-            event.event, event.tool, level, achievement_name);
+        // Process event under a single mutex lock, then clone state for rendering
+        let (level, achievement_name, is_streak_milestone, state_snapshot) = {
+            let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+            let (mut level, achievement_name, is_streak_milestone) =
+                process_event_with_state(&event, &mut s, &cfg);
+
+            // SessionEnd with >=1 commit in this session → upgrade to Epic
+            if event.event == EventKind::SessionEnd && session_commit_count >= 1 {
+                level = CelebrationLevel::Epic;
+            }
+
+            s.save();
+            let snapshot = s.clone();
+            (level, achievement_name, is_streak_milestone, snapshot)
+        };
+
+        eprintln!("[cwinnerd] event={:?} tool={:?} level={:?} achievement={:?} streak_milestone={:?}",
+            event.event, event.tool, level, achievement_name, is_streak_milestone);
 
         if level != CelebrationLevel::Off {
             let cfg2 = Arc::clone(&cfg);
@@ -96,7 +122,7 @@ async fn handle_connection(
                 };
                 eprintln!("[cwinnerd] RENDERING level={:?}", level);
                 if cfg2.audio.enabled {
-                    if let Some(sound) = celebration_to_sound(&level) {
+                    if let Some(sound) = celebration_to_sound(&level, achievement_name.is_some(), is_streak_milestone) {
                         play_sound(&sound, &cfg2.audio.sound_pack);
                     }
                 }
@@ -109,22 +135,28 @@ async fn handle_connection(
     Ok(())
 }
 
-/// Process an event against the given state, returning the celebration level
-/// and optionally the name of a newly unlocked achievement.
+/// Process an event against the given state, returning the celebration level,
+/// optionally the name of a newly unlocked achievement, and whether a streak
+/// milestone was hit.
 ///
 /// The caller is responsible for saving state and rendering visuals.
 pub fn process_event_with_state(
     event: &Event,
     state: &mut State,
     cfg: &Config,
-) -> (CelebrationLevel, Option<String>) {
-    let level = decide(event, state, cfg);
+) -> (CelebrationLevel, Option<String>, bool) {
+    let mut level = decide(event, state, cfg);
     let xp = xp_for_event(&level, state);
     if xp > 0 {
         state.add_xp(xp);
     }
+    let mut is_streak_milestone = false;
     if event.event == EventKind::GitCommit {
-        state.record_commit();
+        let commit_result = state.record_commit();
+        if commit_result.streak_milestone.is_some() {
+            is_streak_milestone = true;
+            level = CelebrationLevel::Epic;
+        }
     }
     if let Some(tool) = &event.tool {
         state.record_tool_use(tool);
@@ -141,7 +173,7 @@ pub fn process_event_with_state(
             state.last_bash_exit = Some(code as i32);
         }
     }
-    (level, achievement_name)
+    (level, achievement_name, is_streak_milestone)
 }
 
 fn handle_command(cmd: &DaemonCommand, state: &Arc<Mutex<State>>) -> DaemonResponse {
@@ -230,5 +262,47 @@ mod tests {
 
         // 25 XP * 2 streak bonus = 50 XP
         assert_eq!(state.xp, 50);
+    }
+
+    #[test]
+    fn test_streak_milestone_upgrades_to_epic() {
+        let mut state = crate::state::State::default();
+        // Set up: streak at 4, yesterday was last commit
+        let yesterday = chrono::Utc::now().date_naive().pred_opt().unwrap();
+        state.last_commit_date = Some(yesterday);
+        state.commit_streak_days = 4;
+        let cfg = crate::config::Config::default();
+        let event = make_event(EventKind::GitCommit);
+
+        let (level, _, is_streak) = process_event_with_state(&event, &mut state, &cfg);
+
+        assert_eq!(level, CelebrationLevel::Epic);
+        assert!(is_streak);
+        assert_eq!(state.commit_streak_days, 5);
+    }
+
+    #[test]
+    fn test_no_streak_milestone_at_non_milestone() {
+        let mut state = crate::state::State::default();
+        let yesterday = chrono::Utc::now().date_naive().pred_opt().unwrap();
+        state.last_commit_date = Some(yesterday);
+        state.commit_streak_days = 5; // going to 6, not a milestone
+        let cfg = crate::config::Config::default();
+        let event = make_event(EventKind::GitCommit);
+
+        let (_, _, is_streak) = process_event_with_state(&event, &mut state, &cfg);
+
+        assert!(!is_streak);
+    }
+
+    #[test]
+    fn test_process_event_returns_is_streak_false_for_non_commit() {
+        let mut state = crate::state::State::default();
+        let cfg = crate::config::Config::default();
+        let event = make_event(EventKind::TaskCompleted);
+
+        let (_, _, is_streak) = process_event_with_state(&event, &mut state, &cfg);
+
+        assert!(!is_streak);
     }
 }
