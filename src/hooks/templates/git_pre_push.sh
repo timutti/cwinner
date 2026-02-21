@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# cwinner git hook: post-push
-# Instalován do ~/.config/git/hooks/post-push
+# cwinner git hook: pre-push
+# Instalován do ~/.config/git/hooks/pre-push
 
 SOCKET="${XDG_DATA_HOME:-$HOME/.local/share}/cwinner/cwinner.sock"
 TTY_PATH="$(tty 2>/dev/null || echo /dev/null)"

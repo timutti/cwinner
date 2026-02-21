@@ -28,7 +28,7 @@ pub fn install(binary_path: &Path) -> Result<()> {
     )?;
     install_git_hook(
         &git_hooks_dir.join("pre-push"),
-        include_str!("hooks/templates/git_post_push.sh"),
+        include_str!("hooks/templates/git_pre_push.sh"),
     )?;
     println!("✓ Git hooks nainstalovány do {}", git_hooks_dir.display());
 
