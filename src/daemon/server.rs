@@ -27,13 +27,19 @@ pub struct SessionInfo {
     pub duration_milestones_fired: Vec<u64>, // minutes already celebrated
 }
 
-impl SessionInfo {
-    pub fn new() -> Self {
+impl Default for SessionInfo {
+    fn default() -> Self {
         Self {
             started_at: Instant::now(),
             commits: 0,
             duration_milestones_fired: Vec::new(),
         }
+    }
+}
+
+impl SessionInfo {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Check if any duration milestones have been crossed and return the highest
@@ -148,13 +154,13 @@ async fn handle_connection(
             if event.event == EventKind::SessionEnd {
                 // Check duration milestones one last time, then remove session
                 let mut info = sm.remove(&event.session_id)
-                    .unwrap_or_else(SessionInfo::new);
+                    .unwrap_or_default();
                 let dur_level = info.check_duration_milestones();
                 (info.commits, dur_level)
             } else {
                 // Ensure session exists
                 let info = sm.entry(event.session_id.clone())
-                    .or_insert_with(SessionInfo::new);
+                    .or_default();
 
                 if event.event == EventKind::GitCommit {
                     info.commits += 1;
