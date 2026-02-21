@@ -8,8 +8,69 @@ use crate::state::State;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
+
+/// Duration milestones in minutes and their celebration levels
+pub const DURATION_MILESTONES: &[(u64, CelebrationLevel)] = &[
+    (60, CelebrationLevel::Medium),   // 1 hour
+    (180, CelebrationLevel::Medium),  // 3 hours
+    (480, CelebrationLevel::Epic),    // 8 hours
+];
+
+/// Runtime-only session tracking (not persisted to disk)
+#[derive(Debug)]
+pub struct SessionInfo {
+    pub started_at: Instant,
+    pub commits: u32,
+    pub duration_milestones_fired: Vec<u64>, // minutes already celebrated
+}
+
+impl SessionInfo {
+    pub fn new() -> Self {
+        Self {
+            started_at: Instant::now(),
+            commits: 0,
+            duration_milestones_fired: Vec::new(),
+        }
+    }
+
+    /// Check if any duration milestones have been crossed and return the highest
+    /// new milestone's celebration level (if any).
+    pub fn check_duration_milestones(&mut self) -> Option<CelebrationLevel> {
+        let elapsed_minutes = self.started_at.elapsed().as_secs() / 60;
+        let mut best_level: Option<CelebrationLevel> = None;
+
+        for &(minutes, ref level) in DURATION_MILESTONES {
+            if elapsed_minutes >= minutes
+                && !self.duration_milestones_fired.contains(&minutes)
+            {
+                self.duration_milestones_fired.push(minutes);
+                // Keep the highest-priority level (Epic > Medium > Mini > Off)
+                best_level = Some(match (&best_level, level) {
+                    (Some(CelebrationLevel::Epic), _) => CelebrationLevel::Epic,
+                    (_, CelebrationLevel::Epic) => CelebrationLevel::Epic,
+                    (Some(CelebrationLevel::Medium), _) => CelebrationLevel::Medium,
+                    _ => level.clone(),
+                });
+            }
+        }
+
+        best_level
+    }
+
+    #[cfg(test)]
+    pub fn with_started_at(started_at: Instant) -> Self {
+        Self {
+            started_at,
+            commits: 0,
+            duration_milestones_fired: Vec::new(),
+        }
+    }
+}
+
+pub type SessionMap = HashMap<String, SessionInfo>;
 
 pub fn socket_path() -> PathBuf {
     dirs::data_local_dir()
@@ -28,7 +89,7 @@ pub async fn run() -> anyhow::Result<()> {
     let listener = UnixListener::bind(&path)?;
     let state = Arc::new(Mutex::new(State::load()));
     let cfg = Arc::new(Config::load());
-    let session_commits: Arc<Mutex<HashMap<String, u32>>> =
+    let sessions: Arc<Mutex<SessionMap>> =
         Arc::new(Mutex::new(HashMap::new()));
 
     eprintln!("cwinnerd listening on {}", path.display());
@@ -37,9 +98,9 @@ pub async fn run() -> anyhow::Result<()> {
         let (stream, _) = listener.accept().await?;
         let state = Arc::clone(&state);
         let cfg = Arc::clone(&cfg);
-        let session_commits = Arc::clone(&session_commits);
+        let sessions = Arc::clone(&sessions);
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(stream, state, cfg, session_commits).await {
+            if let Err(e) = handle_connection(stream, state, cfg, sessions).await {
                 eprintln!("connection error: {e}");
             }
         });
@@ -50,7 +111,7 @@ async fn handle_connection(
     mut stream: UnixStream,
     state: Arc<Mutex<State>>,
     cfg: Arc<Config>,
-    session_commits: Arc<Mutex<HashMap<String, u32>>>,
+    sessions: Arc<Mutex<SessionMap>>,
 ) -> anyhow::Result<()> {
     let mut buf = Vec::new();
     let mut tmp = [0u8; 4096];
@@ -80,17 +141,30 @@ async fn handle_connection(
     if let Ok(event) = serde_json::from_str::<Event>(line) {
         let tty_path = event.tty_path.clone();
 
-        // Track session commits for SessionEnd epic logic
-        let session_commit_count = if event.event == EventKind::GitCommit {
-            let mut sc = session_commits.lock().unwrap_or_else(|e| e.into_inner());
-            let count = sc.entry(event.session_id.clone()).or_insert(0);
-            *count += 1;
-            *count
-        } else if event.event == EventKind::SessionEnd {
-            let mut sc = session_commits.lock().unwrap_or_else(|e| e.into_inner());
-            sc.remove(&event.session_id).unwrap_or(0)
-        } else {
-            0
+        // Track session info (commits + duration) for SessionEnd epic logic
+        let (session_commit_count, duration_milestone_level) = {
+            let mut sm = sessions.lock().unwrap_or_else(|e| e.into_inner());
+
+            if event.event == EventKind::SessionEnd {
+                // Check duration milestones one last time, then remove session
+                let mut info = sm.remove(&event.session_id)
+                    .unwrap_or_else(SessionInfo::new);
+                let dur_level = info.check_duration_milestones();
+                (info.commits, dur_level)
+            } else {
+                // Ensure session exists
+                let info = sm.entry(event.session_id.clone())
+                    .or_insert_with(SessionInfo::new);
+
+                if event.event == EventKind::GitCommit {
+                    info.commits += 1;
+                }
+
+                // Check duration milestones on every event
+                let dur_level = info.check_duration_milestones();
+
+                (info.commits, dur_level)
+            }
         };
 
         // Process event under a single mutex lock, then clone state for rendering
@@ -102,6 +176,11 @@ async fn handle_connection(
             // SessionEnd with >=1 commit in this session → upgrade to Epic
             if event.event == EventKind::SessionEnd && session_commit_count >= 1 {
                 level = CelebrationLevel::Epic;
+            }
+
+            // Duration milestone can upgrade celebration level
+            if let Some(dur_level) = duration_milestone_level {
+                level = upgrade_level(level, dur_level);
             }
 
             s.save();
@@ -174,6 +253,23 @@ pub fn process_event_with_state(
         }
     }
     (level, achievement_name, is_streak_milestone)
+}
+
+/// Upgrade celebration level: return the higher of the two levels.
+fn upgrade_level(current: CelebrationLevel, candidate: CelebrationLevel) -> CelebrationLevel {
+    fn rank(l: &CelebrationLevel) -> u8 {
+        match l {
+            CelebrationLevel::Off => 0,
+            CelebrationLevel::Mini => 1,
+            CelebrationLevel::Medium => 2,
+            CelebrationLevel::Epic => 3,
+        }
+    }
+    if rank(&candidate) > rank(&current) {
+        candidate
+    } else {
+        current
+    }
 }
 
 fn handle_command(cmd: &DaemonCommand, state: &Arc<Mutex<State>>) -> DaemonResponse {
@@ -304,5 +400,129 @@ mod tests {
         let (_, _, is_streak) = process_event_with_state(&event, &mut state, &cfg);
 
         assert!(!is_streak);
+    }
+
+    // --- Session duration milestone tests ---
+
+    #[test]
+    fn test_session_info_new_has_no_milestones_fired() {
+        let info = SessionInfo::new();
+        assert_eq!(info.commits, 0);
+        assert!(info.duration_milestones_fired.is_empty());
+    }
+
+    #[test]
+    fn test_duration_milestone_not_reached_before_60_min() {
+        let started = Instant::now(); // just started
+        let mut info = SessionInfo::with_started_at(started);
+        let result = info.check_duration_milestones();
+        assert!(result.is_none());
+        assert!(info.duration_milestones_fired.is_empty());
+    }
+
+    #[test]
+    fn test_duration_milestone_1h_fires_medium() {
+        // Simulate session started 61 minutes ago
+        let started = Instant::now() - std::time::Duration::from_secs(61 * 60);
+        let mut info = SessionInfo::with_started_at(started);
+        let result = info.check_duration_milestones();
+        assert_eq!(result, Some(CelebrationLevel::Medium));
+        assert!(info.duration_milestones_fired.contains(&60));
+    }
+
+    #[test]
+    fn test_duration_milestone_1h_does_not_refire() {
+        let started = Instant::now() - std::time::Duration::from_secs(61 * 60);
+        let mut info = SessionInfo::with_started_at(started);
+
+        // First check fires
+        let result1 = info.check_duration_milestones();
+        assert_eq!(result1, Some(CelebrationLevel::Medium));
+
+        // Second check does NOT refire
+        let result2 = info.check_duration_milestones();
+        assert!(result2.is_none());
+    }
+
+    #[test]
+    fn test_duration_milestone_3h_fires_medium() {
+        let started = Instant::now() - std::time::Duration::from_secs(181 * 60);
+        let mut info = SessionInfo::with_started_at(started);
+        // Pre-fire the 1h milestone so we only see the 3h one
+        info.duration_milestones_fired.push(60);
+
+        let result = info.check_duration_milestones();
+        assert_eq!(result, Some(CelebrationLevel::Medium));
+        assert!(info.duration_milestones_fired.contains(&180));
+    }
+
+    #[test]
+    fn test_duration_milestone_8h_fires_epic() {
+        let started = Instant::now() - std::time::Duration::from_secs(481 * 60);
+        let mut info = SessionInfo::with_started_at(started);
+        // Pre-fire earlier milestones
+        info.duration_milestones_fired.push(60);
+        info.duration_milestones_fired.push(180);
+
+        let result = info.check_duration_milestones();
+        assert_eq!(result, Some(CelebrationLevel::Epic));
+        assert!(info.duration_milestones_fired.contains(&480));
+    }
+
+    #[test]
+    fn test_duration_milestone_multiple_at_once_returns_highest() {
+        // Session started 4 hours ago, no milestones fired yet
+        let started = Instant::now() - std::time::Duration::from_secs(241 * 60);
+        let mut info = SessionInfo::with_started_at(started);
+
+        // Both 60min and 180min crossed; should return Medium (highest of the two)
+        let result = info.check_duration_milestones();
+        assert_eq!(result, Some(CelebrationLevel::Medium));
+        assert!(info.duration_milestones_fired.contains(&60));
+        assert!(info.duration_milestones_fired.contains(&180));
+    }
+
+    #[test]
+    fn test_duration_milestone_all_three_at_once_returns_epic() {
+        // Session started 9 hours ago, no milestones fired
+        let started = Instant::now() - std::time::Duration::from_secs(541 * 60);
+        let mut info = SessionInfo::with_started_at(started);
+
+        let result = info.check_duration_milestones();
+        assert_eq!(result, Some(CelebrationLevel::Epic));
+        assert_eq!(info.duration_milestones_fired.len(), 3);
+    }
+
+    #[test]
+    fn test_upgrade_level_picks_higher() {
+        assert_eq!(upgrade_level(CelebrationLevel::Off, CelebrationLevel::Medium), CelebrationLevel::Medium);
+        assert_eq!(upgrade_level(CelebrationLevel::Medium, CelebrationLevel::Epic), CelebrationLevel::Epic);
+        assert_eq!(upgrade_level(CelebrationLevel::Epic, CelebrationLevel::Medium), CelebrationLevel::Epic);
+        assert_eq!(upgrade_level(CelebrationLevel::Mini, CelebrationLevel::Medium), CelebrationLevel::Medium);
+        assert_eq!(upgrade_level(CelebrationLevel::Off, CelebrationLevel::Off), CelebrationLevel::Off);
+    }
+
+    #[test]
+    fn test_session_cleanup_on_session_end() {
+        // Verify that SessionInfo is properly removed when SessionEnd arrives
+        let mut sessions: SessionMap = HashMap::new();
+        let info = SessionInfo::new();
+        sessions.insert("s1".into(), info);
+        assert!(sessions.contains_key("s1"));
+
+        // Simulate what handle_connection does on SessionEnd
+        let removed = sessions.remove("s1");
+        assert!(removed.is_some());
+        assert!(!sessions.contains_key("s1"));
+    }
+
+    #[test]
+    fn test_session_commits_tracked_in_session_info() {
+        let mut info = SessionInfo::new();
+        assert_eq!(info.commits, 0);
+        info.commits += 1;
+        assert_eq!(info.commits, 1);
+        info.commits += 1;
+        assert_eq!(info.commits, 2);
     }
 }
