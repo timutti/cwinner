@@ -8,8 +8,16 @@ use crossterm::{
 use rand::Rng;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
+use std::sync::Mutex;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// Global render lock — prevents concurrent alternate screen switches
+/// which confuse Claude Code's differential renderer.
+static RENDER_LOCK: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// Minimum gap between renders to let Claude Code's renderer recover.
+const RENDER_COOLDOWN: Duration = Duration::from_millis(2000);
 
 /// Return the XP threshold for the level at `index` in the LEVELS table.
 /// Returns `u32::MAX` if `index` is out of range (i.e., past the last defined level).
@@ -53,6 +61,19 @@ pub fn xp_progress(level: u32, xp: u32) -> (u32, u32) {
 }
 
 pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achievement: Option<&str>) {
+    // Acquire render lock — if another render is in progress, wait for it.
+    let mut guard = match RENDER_LOCK.lock() {
+        Ok(g) => g,
+        Err(e) => e.into_inner(),
+    };
+
+    // Skip if we rendered too recently — Claude Code needs time to recover.
+    if let Some(last) = *guard {
+        if last.elapsed() < RENDER_COOLDOWN {
+            return;
+        }
+    }
+
     match level {
         CelebrationLevel::Off | CelebrationLevel::Mini => {}
         CelebrationLevel::Medium => { let _ = render_toast(tty_path, state, achievement); }
@@ -61,6 +82,8 @@ pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achieveme
             let _ = render_splash(tty_path, state, achievement.unwrap_or("ACHIEVEMENT UNLOCKED!"));
         }
     }
+
+    *guard = Some(Instant::now());
 }
 
 fn open_tty(tty_path: &str) -> io::Result<std::fs::File> {
@@ -97,14 +120,25 @@ pub fn format_toast_msg(state: &State, achievement: Option<&str>) -> (String, Co
 
 /// Brief alternate screen overlay — the only safe way to display in a terminal
 /// managed by Claude Code's differential renderer without corrupting its state.
+/// Estimate display width accounting for wide characters (emoji = 2 cols).
+fn display_width(s: &str) -> usize {
+    s.chars().map(|c| {
+        let cp = c as u32;
+        if cp >= 0x1F000                         // supplementary emoji (🏆 etc.)
+            || (cp >= 0x2600 && cp <= 0x27BF)    // misc symbols + dingbats (⚡ etc.)
+            || (cp >= 0x3000 && cp <= 0x9FFF)    // CJK
+            || (cp >= 0xAC00 && cp <= 0xD7AF)    // Hangul
+        { 2 } else { 1 }
+    }).sum()
+}
+
 pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) -> io::Result<()> {
     let mut tty = open_tty(tty_path)?;
     let (cols, rows) = tty_size(&tty);
     let (msg, color) = format_toast_msg(state, achievement);
-    let duration = if achievement.is_some() { 1500u64 } else { 800u64 };
+    let duration = if achievement.is_some() { 2500u64 } else { 1500u64 };
 
     let mid_row = rows / 2;
-    let msg_display = format!(" {} ", msg);
     let pad_width = (cols as usize).saturating_sub(2);
 
     execute!(tty, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All))?;
@@ -112,7 +146,7 @@ pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) ->
     queue!(tty,
         cursor::MoveTo(0, mid_row),
         SetForegroundColor(color),
-        Print(format!("{:^width$}", msg_display, width = pad_width)),
+        Print(format!("{:^width$}", msg, width = pad_width)),
         ResetColor,
     )?;
     tty.flush()?;

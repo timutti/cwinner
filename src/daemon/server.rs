@@ -86,6 +86,8 @@ async fn handle_connection(
         if level != CelebrationLevel::Off {
             let cfg2 = Arc::clone(&cfg);
             tokio::task::spawn_blocking(move || {
+                // Let Claude Code finish its render cycle after the hook returns.
+                std::thread::sleep(std::time::Duration::from_millis(200));
                 if cfg2.audio.enabled {
                     if let Some(sound) = celebration_to_sound(&level) {
                         play_sound(&sound, &cfg2.audio.sound_pack);
