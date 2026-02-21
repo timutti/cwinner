@@ -3,7 +3,7 @@ use cwinner_lib::{install, state::State};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "cwinner", about = "Gamification pro Claude Code vibe koderů")]
+#[command(name = "cwinner", about = "Gamification overlay for Claude Code")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -11,22 +11,22 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Nainstaluj cwinner (hooks, daemon, config)
+    /// Install cwinner (hooks, daemon, config)
     Install,
-    /// Odinstaluj cwinner
+    /// Uninstall cwinner
     Uninstall,
-    /// Zobraz stav daemonu a aktuální statistiky
+    /// Show daemon status and current statistics
     Status,
-    /// Zobraz celkové statistiky a achievementy
+    /// Show overall statistics and achievements
     Stats,
-    /// Interní: odešli event daemonovi (volají hook skripty)
+    /// Internal: send event to daemon (called by hook scripts)
     Hook {
         #[arg(value_enum)]
         event: HookEvent,
     },
-    /// Spusť daemon přímo (bez service manageru)
+    /// Run daemon directly (without service manager)
     Daemon,
-    /// Správa sound packů
+    /// Manage sound packs
     Sounds {
         #[command(subcommand)]
         cmd: SoundsCommands,
@@ -45,7 +45,7 @@ enum HookEvent {
 
 #[derive(Subcommand)]
 enum SoundsCommands {
-    /// Zobraz dostupné sound packy
+    /// List available sound packs
     List,
 }
 
@@ -55,13 +55,13 @@ fn main() {
         Commands::Install => {
             let binary = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("cwinner"));
             if let Err(e) = install::install(&binary) {
-                eprintln!("Chyba instalace: {e}");
+                eprintln!("Install error: {e}");
                 std::process::exit(1);
             }
         }
         Commands::Uninstall => {
             if let Err(e) = install::uninstall() {
-                eprintln!("Chyba: {e}");
+                eprintln!("Uninstall error: {e}");
             }
         }
         Commands::Status => {
@@ -69,8 +69,8 @@ fn main() {
             println!("cwinner status:");
             println!("  Level:  {} ({})", s.level, s.level_name);
             println!("  XP:     {}", s.xp);
-            println!("  Streak: {} dní", s.commit_streak_days);
-            println!("  Commity celkem: {}", s.commits_total);
+            println!("  Streak: {} days", s.commit_streak_days);
+            println!("  Total commits: {}", s.commits_total);
         }
         Commands::Stats => {
             let s = State::load();
@@ -141,7 +141,7 @@ fn main() {
                         println!("  {}", entry.file_name().to_string_lossy());
                     }
                 } else {
-                    println!("Žádné sound packy v {}", sounds_dir.display());
+                    println!("No sound packs in {}", sounds_dir.display());
                 }
             }
         },
@@ -212,7 +212,7 @@ fn send_hook_event(event: HookEvent, tty_path: &str) {
     use std::io::Write;
     use std::os::unix::net::UnixStream;
 
-    // Přečti stdin (Claude Code posílá JSON)
+    // Read stdin (Claude Code sends JSON)
     let mut input = String::new();
     let _ = std::io::stdin().read_line(&mut input);
     let meta: serde_json::Value = serde_json::from_str(&input).unwrap_or_default();
@@ -254,7 +254,7 @@ fn send_hook_event(event: HookEvent, tty_path: &str) {
         let json = serde_json::to_string(&e).unwrap_or_default();
         let _ = stream.write_all(format!("{}\n", json).as_bytes());
     }
-    // Pokud daemon neběží, tiše selžeme
+    // Silently fail if daemon is not running
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cwinner git hook: post-commit
-# Instalován do ~/.config/git/hooks/post-commit
+# Installed to ~/.config/git/hooks/post-commit
 
 SOCKET="${XDG_DATA_HOME:-$HOME/.local/share}/cwinner/cwinner.sock"
 TTY_PATH="$(tty 2>/dev/null || echo /dev/null)"

@@ -33,7 +33,7 @@ pub fn check_custom_triggers(command: &str, cfg: &Config) -> Option<CelebrationL
 }
 
 pub fn decide(event: &Event, state: &State, cfg: &Config) -> CelebrationLevel {
-    // Průlom: bash fail → pass
+    // Breakthrough: bash fail → pass
     if event.event == EventKind::PostToolUse {
         if let Some(tool) = &event.tool {
             if tool == "Bash" {

@@ -102,7 +102,7 @@ impl State {
         CommitResult { first_today, streak_milestone }
     }
 
-    /// Vrátí true pokud je to první použití tohoto nástroje
+    /// Returns true if this is the first use of this tool
     pub fn record_tool_use(&mut self, tool: &str) -> bool {
         self.tools_used.insert(tool.to_string())
     }

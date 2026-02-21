@@ -2,14 +2,17 @@
 name = "cwinner"
 version = "0.1.0"
 edition = "2021"
+description = "Gamification overlay for Claude Code — XP, levels, achievements, and celebrations"
+license = "MIT"
+repository = "https://github.com/timutti/cwinner"
+homepage = "https://github.com/timutti/cwinner"
+readme = "README.md"
+keywords = ["claude-code", "gamification", "cli", "developer-tools"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "cwinner"
 path = "src/main.rs"
-
-[[bin]]
-name = "cwinnerd"
-path = "src/daemon_main.rs"
 
 [lib]
 name = "cwinner_lib"
