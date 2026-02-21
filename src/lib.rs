@@ -7,4 +7,5 @@ pub mod audio;
 pub mod sounds;
 pub mod achievements;
 pub mod install;
+pub mod update;
 pub mod daemon;

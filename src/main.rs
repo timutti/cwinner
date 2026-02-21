@@ -24,6 +24,8 @@ enum Commands {
         #[arg(value_enum)]
         event: HookEvent,
     },
+    /// Update cwinner to the latest release
+    Update,
     /// Run daemon directly (without service manager)
     Daemon,
     /// Manage sound packs
@@ -116,6 +118,13 @@ fn main() {
                 for a in locked {
                     println!("  ○ {} — {}", a.name, a.description);
                 }
+            }
+        }
+        Commands::Update => {
+            let binary = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("cwinner"));
+            if let Err(e) = cwinner_lib::update::update(&binary) {
+                eprintln!("Update error: {e}");
+                std::process::exit(1);
             }
         }
         Commands::Hook { event } => {
