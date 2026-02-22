@@ -320,7 +320,9 @@ pub fn process_event_with_state(
         state.record_tool_use(tool);
     }
     let newly_unlocked = check_achievements(state, event);
-    let achievement_name = newly_unlocked.first().map(|a| a.name.to_string());
+    let achievement_name = newly_unlocked
+        .first()
+        .map(|a| format!("{} — {}", a.name, a.description));
     for a in &newly_unlocked {
         state.unlock_achievement(a.id);
     }

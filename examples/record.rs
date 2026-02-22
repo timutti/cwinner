@@ -43,7 +43,7 @@ fn main() {
         &tty,
         &CelebrationLevel::Medium,
         &state,
-        Some("First Commit"),
+        Some("First Commit — Made your first git commit"),
         Some("📝 Git Commit"),
     );
     thread::sleep(Duration::from_millis(1000));
@@ -54,7 +54,7 @@ fn main() {
         &tty,
         &CelebrationLevel::Epic,
         &state,
-        Some("Shipped It"),
+        Some("Shipped It — First git push"),
         Some("🚀 Git Push"),
     );
     thread::sleep(Duration::from_millis(500));

@@ -129,11 +129,8 @@ pub fn render(
             let _ = render_toast(tty_path, state, achievement, label);
         }
         CelebrationLevel::Epic => {
-            let _ = render_epic(
-                tty_path,
-                state,
-                achievement.unwrap_or("ACHIEVEMENT UNLOCKED!"),
-            );
+            let headline = achievement.or(label).unwrap_or("ACHIEVEMENT UNLOCKED!");
+            let _ = render_epic(tty_path, state, headline);
         }
     }
 }
@@ -169,7 +166,10 @@ pub fn format_toast_msg(
         let next = level_threshold(state.level as usize);
         if next == u32::MAX {
             (
-                format!("{} {} │ {} XP │ MAX", prefix, state.level_name, state.xp),
+                format!(
+                    "{} │ {} │ {} XP │ MAX",
+                    prefix, state.level_name, state.xp
+                ),
                 Color::Cyan,
             )
         } else {
@@ -177,7 +177,7 @@ pub fn format_toast_msg(
             let bar = xp_bar_string(xp_in_level, xp_needed, 15);
             (
                 format!(
-                    "{} {} │ {} │ {} XP",
+                    "{} │ {} │ {} │ {} XP",
                     prefix, state.level_name, bar, state.xp
                 ),
                 Color::Cyan,
@@ -602,11 +602,11 @@ mod tests {
         state.level = 2;
         state.level_name = "Prompt Whisperer".into();
         let (msg, _) = format_toast_msg(&state, None, None);
-        // Verify the │ delimiters are present (3 sections)
+        // Verify the │ delimiters are present (4 sections: prefix │ level │ bar │ XP)
         let delimiter_count = msg.matches('│').count();
         assert_eq!(
-            delimiter_count, 2,
-            "Expected 2 │ delimiters, got {}",
+            delimiter_count, 3,
+            "Expected 3 │ delimiters, got {}",
             delimiter_count
         );
     }

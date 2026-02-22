@@ -54,7 +54,7 @@ fn main() {
                     &tty,
                     &CelebrationLevel::Medium,
                     &state,
-                    Some("First Commit"),
+                    Some("First Commit — Made your first git commit"),
                     Some("📝 Git Commit"),
                 );
                 println!("  Done!");
@@ -65,7 +65,7 @@ fn main() {
                     &tty,
                     &CelebrationLevel::Epic,
                     &state,
-                    Some("ACHIEVEMENT UNLOCKED!"),
+                    Some("Shipped It — First git push"),
                     Some("🚀 Git Push"),
                 );
                 println!("  Done!");
