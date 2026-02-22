@@ -1,7 +1,10 @@
 # cwinner
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/timutti/cwinner/actions/workflows/ci.yml/badge.svg)](https://github.com/timutti/cwinner/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/timutti/cwinner)](https://github.com/timutti/cwinner/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org)
+[![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macOS-lightgrey.svg)]()
 
 Gamification for [Claude Code](https://claude.ai/code). Tracks your progress, awards XP, and plays sounds on commits, completed tasks, and breakthrough moments.
 
