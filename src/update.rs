@@ -131,7 +131,9 @@ pub fn update(binary_path: &Path) -> Result<()> {
 
 fn stop_daemon() {
     // Kill the daemon process (auto-starts from hooks on next event)
-    let _ = Command::new("pkill").args(["-f", "cwinnerd"]).status();
+    let _ = Command::new("pkill")
+        .args(["-f", "cwinner daemon"])
+        .status();
 
     // macOS: also unload launchd agent if present
     #[cfg(target_os = "macos")]
