@@ -45,7 +45,7 @@ cargo build --release
 `cwinner install` does everything automatically:
 - adds hooks to `~/.claude/settings.json`
 - sets up status line XP bar (wraps your existing statusline script)
-- installs git hooks (`post-commit`, `pre-push`)
+- detects git commit/push from Claude Code hooks (no git hook installation needed)
 - generates a default sound pack to `~/.config/cwinner/sounds/default/`
 - daemon auto-starts from hooks (Linux) or registers a launchd agent (macOS)
 
