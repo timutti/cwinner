@@ -1,8 +1,6 @@
 use crate::achievements::check_achievements;
 use crate::audio::{celebration_to_sound, play_sound};
-use crate::celebration::{
-    CelebrationLevel, decide, has_git_commit, xp_for_event,
-};
+use crate::celebration::{CelebrationLevel, decide, has_git_commit, xp_for_event};
 use crate::config::Config;
 use crate::event::{Event, EventKind};
 use crate::renderer::render;
