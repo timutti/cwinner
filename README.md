@@ -109,14 +109,15 @@ Mini celebrations are silent (visual only). If a sound file is missing from the 
 
 ```
 cwinner hook <event>   →   Unix socket   →   cwinnerd daemon
-git post-commit hook   →                      ├ decide celebration level
+                                               ├ decide celebration level
+                                               ├ detect git commit/push from Bash commands
                                                ├ check achievements
                                                ├ update XP/state
                                                ├ play sound (async)
                                                └ render visual (alternate screen)
 ```
 
-The daemon auto-starts from hook events as a detached background process (inherits the session's audio context for reliable sound playback). Claude Code hooks use the `cwinner hook` CLI subcommand. Git hooks are bash scripts that send events over the Unix socket. All hooks are fire-and-forget.
+The daemon auto-starts from hook events as a detached background process (inherits the session's audio context for reliable sound playback). Claude Code hooks use the `cwinner hook` CLI subcommand. Git commit and push are detected directly from Bash command strings — no git hooks needed. All hooks are fire-and-forget.
 
 ## Development
 
