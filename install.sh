@@ -67,6 +67,11 @@ mkdir -p "${INSTALL_DIR}"
 mv "${DL_DIR}/cwinner" "${INSTALL_DIR}/cwinner"
 chmod +x "${INSTALL_DIR}/cwinner"
 
+# macOS: clear quarantine so Gatekeeper doesn't block the binary
+if [ "$(uname -s)" = "Darwin" ]; then
+    xattr -cr "${INSTALL_DIR}/cwinner" 2>/dev/null || true
+fi
+
 echo "Installed cwinner to ${INSTALL_DIR}/cwinner"
 
 # Set up hooks, daemon, config, sounds

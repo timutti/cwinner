@@ -47,7 +47,7 @@ cargo build --release
 - sets up status line XP bar (wraps your existing statusline script)
 - installs git hooks (`post-commit`, `pre-push`)
 - generates a default sound pack to `~/.config/cwinner/sounds/default/`
-- registers a systemd user service (Linux) or launchd agent (macOS)
+- daemon auto-starts from hooks (Linux) or registers a launchd agent (macOS)
 
 ## Commands
 
@@ -96,14 +96,14 @@ splash_duration_ms = 2000
 The default pack ships 5 synthesized multi-note WAV melodies (generated at install time, no external assets). A custom pack is a directory of WAV/OGG/MP3 files under `~/.config/cwinner/sounds/<name>/`:
 
 ```
-mini.wav        # quick double-tap notification (Mini celebration)
-milestone.wav   # rising chime (Medium, no achievement)
-epic.wav        # C major chord swell (Medium with achievement)
-fanfare.wav     # ascending trumpet call (Epic)
-streak.wav      # rapid ascending scale (Epic + streak milestone)
+mini.wav        # quick double-tap (reserved, not currently played)
+milestone.wav   # rising chime — Medium celebration without achievement
+epic.wav        # C major chord swell — Medium celebration with achievement
+fanfare.wav     # ascending trumpet call — Epic celebration
+streak.wav      # rapid ascending scale — Epic + streak milestone
 ```
 
-If a sound file is missing from the configured pack, cwinner falls back to generating a WAV into `/tmp/cwinner/`.
+Mini celebrations are silent (visual only). If a sound file is missing from the configured pack, cwinner falls back to generating a WAV into `/tmp/cwinner/`.
 
 ## Architecture
 
