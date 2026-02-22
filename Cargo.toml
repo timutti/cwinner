@@ -1,8 +1,8 @@
 [package]
 name = "cwinner"
 version = "0.1.5"
-edition = "2021"
-rust-version = "1.83.0"
+edition = "2024"
+rust-version = "1.85.0"
 authors = ["timutti"]
 description = "Gamification overlay for Claude Code — XP, levels, achievements, and celebrations"
 license = "MIT"
