@@ -10,7 +10,7 @@ Gamification for [Claude Code](https://claude.ai/code). Tracks your progress, aw
 - **XP and 10 levels** — every action in Claude Code earns points (with 2x streak bonus at 5+ day streaks)
 - **5 distinct sounds** — multi-note synthesized WAV melodies generated at runtime, no external assets
 - **Visual celebrations** — progress bars, centered toasts, confetti rain + splash boxes (all via alternate screen)
-- **26 achievements** — commits, streaks, tools, levels, Claude Code features
+- **26 achievements** — commits, streaks, tools, levels, and Claude Code features
 - **Commit streaks** — tracks consecutive days, streak milestones at 5/10/25/100 days
 - **Session tracking** — duration milestones at 1h/3h/8h, epic celebration for sessions with commits
 - **Custom triggers** — config-based substring matching on bash commands
