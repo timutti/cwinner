@@ -97,6 +97,12 @@ pub fn update(binary_path: &Path) -> Result<()> {
     stop_daemon();
 
     let target_path = std::env::current_exe().unwrap_or_else(|_| binary_path.to_path_buf());
+
+    // Remove the old binary before copying so the OS allocates a fresh inode.
+    // On macOS, overwriting in-place (same inode) causes the kernel VFS cache
+    // to serve stale executable metadata, which makes the new binary hang.
+    // On Linux this is harmless but equally correct.
+    let _ = std::fs::remove_file(&target_path);
     std::fs::copy(&new_binary, &target_path)
         .with_context(|| format!("failed to replace binary at {}", target_path.display()))?;
 
@@ -104,18 +110,6 @@ pub fn update(binary_path: &Path) -> Result<()> {
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&target_path, std::fs::Permissions::from_mode(0o755))?;
-    }
-
-    // macOS: clear quarantine xattr and ad-hoc codesign so Gatekeeper
-    // doesn't block/hang the binary on first launch
-    #[cfg(target_os = "macos")]
-    {
-        let _ = Command::new("xattr")
-            .args(["-cr", target_path.to_str().unwrap_or("")])
-            .status();
-        let _ = Command::new("codesign")
-            .args(["-s", "-", target_path.to_str().unwrap_or("")])
-            .status();
     }
 
     // Clean up
