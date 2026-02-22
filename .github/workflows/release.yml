@@ -45,6 +45,24 @@ jobs:
             cargo build --release --target ${{ matrix.target }}
           fi
 
+      - name: Ad-hoc codesign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign -s - target/${{ matrix.target }}/release/cwinner
+
+      - name: Smoke test
+        if: ${{ !matrix.cross }}
+        run: |
+          BIN=target/${{ matrix.target }}/release/cwinner
+          $BIN statusline &
+          PID=$!
+          sleep 3
+          if kill -0 $PID 2>/dev/null; then
+            kill $PID
+            echo "::error::Binary hangs on 'statusline' command"
+            exit 1
+          fi
+          wait $PID
+
       - name: Package
         run: |
           cd target/${{ matrix.target }}/release

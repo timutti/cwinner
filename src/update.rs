@@ -106,6 +106,18 @@ pub fn update(binary_path: &Path) -> Result<()> {
         std::fs::set_permissions(&target_path, std::fs::Permissions::from_mode(0o755))?;
     }
 
+    // macOS: clear quarantine xattr and ad-hoc codesign so Gatekeeper
+    // doesn't block/hang the binary on first launch
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("xattr")
+            .args(["-cr", target_path.to_str().unwrap_or("")])
+            .status();
+        let _ = Command::new("codesign")
+            .args(["-s", "-", target_path.to_str().unwrap_or("")])
+            .status();
+    }
+
     // Clean up
     let _ = std::fs::remove_dir_all(&tmp_dir);
 
