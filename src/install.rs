@@ -346,7 +346,6 @@ fn install_git_hook(path: &Path, template: &str) -> Result<()> {
     Ok(())
 }
 
-
 fn register_service(binary: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
     register_launchd(binary)?;

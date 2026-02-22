@@ -36,7 +36,11 @@ pub fn check_custom_triggers(command: &str, cfg: &Config) -> Option<CelebrationL
 /// If both are present (e.g. `git commit && git push`), returns GitPush (higher priority).
 pub fn detect_git_command(command: &str) -> Option<EventKind> {
     let mut found = None;
-    for segment in command.split("&&").flat_map(|s| s.split(';')).flat_map(|s| s.split("||")) {
+    for segment in command
+        .split("&&")
+        .flat_map(|s| s.split(';'))
+        .flat_map(|s| s.split("||"))
+    {
         let trimmed = segment.trim();
         if trimmed.starts_with("git push ") || trimmed == "git push" {
             return Some(EventKind::GitPush); // highest priority, return immediately
@@ -69,8 +73,12 @@ pub fn decide(event: &Event, state: &State, cfg: &Config) -> CelebrationLevel {
                     if exit_code == 0 {
                         if let Some(git_kind) = detect_git_command(command) {
                             return match git_kind {
-                                EventKind::GitCommit => CelebrationLevel::from(&cfg.intensity.milestone),
-                                EventKind::GitPush => CelebrationLevel::from(&cfg.intensity.breakthrough),
+                                EventKind::GitCommit => {
+                                    CelebrationLevel::from(&cfg.intensity.milestone)
+                                }
+                                EventKind::GitPush => {
+                                    CelebrationLevel::from(&cfg.intensity.breakthrough)
+                                }
                                 _ => unreachable!(),
                             };
                         }
@@ -337,13 +345,19 @@ mod tests {
 
     #[test]
     fn test_detect_git_push() {
-        assert_eq!(detect_git_command("git push origin main"), Some(EventKind::GitPush));
+        assert_eq!(
+            detect_git_command("git push origin main"),
+            Some(EventKind::GitPush)
+        );
         assert_eq!(detect_git_command("git push"), Some(EventKind::GitPush));
     }
 
     #[test]
     fn test_detect_git_commit() {
-        assert_eq!(detect_git_command("git commit -m \"msg\""), Some(EventKind::GitCommit));
+        assert_eq!(
+            detect_git_command("git commit -m \"msg\""),
+            Some(EventKind::GitCommit)
+        );
         assert_eq!(detect_git_command("git commit"), Some(EventKind::GitCommit));
     }
 
