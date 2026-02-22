@@ -183,9 +183,9 @@ async fn handle_connection(
         };
 
         // Process event under a single mutex lock, then clone state for rendering
-        let (level, achievement_name, is_streak_milestone, event_label, state_snapshot) = {
+        let (level, achievement_name, is_streak_milestone, leveled_up, event_label, state_snapshot) = {
             let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-            let (mut level, achievement_name, is_streak_milestone) =
+            let (mut level, achievement_name, is_streak_milestone, leveled_up) =
                 process_event_with_state(&event, &mut s, &cfg);
 
             // SessionEnd with >=1 commit in this session → upgrade to Epic
@@ -211,14 +211,21 @@ async fn handle_connection(
                 level,
                 achievement_name,
                 is_streak_milestone,
+                leveled_up,
                 label,
                 snapshot,
             )
         };
 
         eprintln!(
-            "[cwinnerd] event={:?} tool={:?} level={:?} achievement={:?} streak_milestone={:?} tty={:?}",
-            event.event, event.tool, level, achievement_name, is_streak_milestone, tty_path
+            "[cwinnerd] event={:?} tool={:?} level={:?} achievement={:?} streak_milestone={:?} leveled_up={} tty={:?}",
+            event.event,
+            event.tool,
+            level,
+            achievement_name,
+            is_streak_milestone,
+            leveled_up,
+            tty_path
         );
 
         if level != CelebrationLevel::Off {
@@ -231,6 +238,9 @@ async fn handle_connection(
                 };
                 eprintln!("[cwinnerd] RENDERING level={:?}", level);
                 if cfg2.audio.enabled {
+                    if leveled_up {
+                        play_sound(&crate::audio::SoundKind::Mini, &cfg2.audio);
+                    }
                     if let Some(sound) = celebration_to_sound(
                         &level,
                         achievement_name.is_some(),
@@ -283,20 +293,22 @@ fn make_event_label(event: &Event) -> Option<String> {
 }
 
 /// Process an event against the given state, returning the celebration level,
-/// optionally the name of a newly unlocked achievement, and whether a streak
-/// milestone was hit.
+/// optionally the name of a newly unlocked achievement, whether a streak
+/// milestone was hit, and whether the player leveled up.
 ///
 /// The caller is responsible for saving state and rendering visuals.
 pub fn process_event_with_state(
     event: &Event,
     state: &mut State,
     cfg: &Config,
-) -> (CelebrationLevel, Option<String>, bool) {
+) -> (CelebrationLevel, Option<String>, bool, bool) {
     let mut level = decide(event, state, cfg);
     let xp = xp_for_event(&level, state);
+    let old_level = state.level;
     if xp > 0 {
         state.add_xp(xp);
     }
+    let leveled_up = state.level > old_level;
     let mut is_streak_milestone = false;
     // Record commit from GitCommit event or from Bash "git commit" command
     // (has_git_commit checks for commit even in chained commands like "git commit && git push")
@@ -326,7 +338,7 @@ pub fn process_event_with_state(
     for a in &newly_unlocked {
         state.unlock_achievement(a.id);
     }
-    (level, achievement_name, is_streak_milestone)
+    (level, achievement_name, is_streak_milestone, leveled_up)
 }
 
 #[cfg(test)]
@@ -386,9 +398,22 @@ mod tests {
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::GitCommit); // adds 25 XP (milestone) → level 2
 
-        process_event_with_state(&event, &mut state, &cfg);
+        let (_, _, _, leveled_up) = process_event_with_state(&event, &mut state, &cfg);
 
         assert!(state.achievements_unlocked.iter().any(|id| id == "level_2"));
+        assert!(leveled_up);
+    }
+
+    #[test]
+    fn test_no_level_up_returns_false() {
+        let mut state = crate::state::State::default();
+        state.xp = 10;
+        let cfg = crate::config::Config::default();
+        let event = make_event(EventKind::TaskCompleted); // adds 25 XP, stays level 1
+
+        let (_, _, _, leveled_up) = process_event_with_state(&event, &mut state, &cfg);
+
+        assert!(!leveled_up);
     }
 
     #[test]
@@ -416,7 +441,7 @@ mod tests {
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::GitCommit);
 
-        let (level, _, is_streak) = process_event_with_state(&event, &mut state, &cfg);
+        let (level, _, is_streak, _) = process_event_with_state(&event, &mut state, &cfg);
 
         assert_eq!(level, CelebrationLevel::Epic);
         assert!(is_streak);
@@ -432,7 +457,7 @@ mod tests {
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::GitCommit);
 
-        let (_, _, is_streak) = process_event_with_state(&event, &mut state, &cfg);
+        let (_, _, is_streak, _) = process_event_with_state(&event, &mut state, &cfg);
 
         assert!(!is_streak);
     }
@@ -443,7 +468,7 @@ mod tests {
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::TaskCompleted);
 
-        let (_, _, is_streak) = process_event_with_state(&event, &mut state, &cfg);
+        let (_, _, is_streak, _) = process_event_with_state(&event, &mut state, &cfg);
 
         assert!(!is_streak);
     }

@@ -134,6 +134,20 @@ pub fn render(
     }
 }
 
+/// Count extra display columns from wide characters (emoji).
+/// Most emoji are 2 columns wide but count as 1 char for Rust's `{:^width$}`.
+fn wide_char_extra(s: &str) -> usize {
+    s.chars()
+        .filter(|&c| c as u32 >= 0x1F000 || c == '⚡')
+        .count()
+}
+
+/// Center text in a field of `width` display columns, accounting for wide emoji.
+fn center_padded(text: &str, width: usize) -> String {
+    let adjusted = width.saturating_sub(wide_char_extra(text));
+    format!("{:^width$}", text, width = adjusted)
+}
+
 fn open_tty(tty_path: &str) -> io::Result<std::fs::File> {
     OpenOptions::new().write(true).open(tty_path)
 }
@@ -360,7 +374,7 @@ fn render_epic(
             _guard.tty,
             cursor::MoveTo(0, row),
             SetForegroundColor(Color::Green),
-            Print(format!("║{:^width$}║", label_line, width = inner_width)),
+            Print(format!("║{}║", center_padded(label_line, inner_width))),
         )?;
         row += 1;
         // Achievement line (only when unlocked)
@@ -370,7 +384,7 @@ fn render_epic(
                 _guard.tty,
                 cursor::MoveTo(0, row),
                 SetForegroundColor(Color::Yellow),
-                Print(format!("║{:^width$}║", ach_line, width = inner_width)),
+                Print(format!("║{}║", center_padded(&ach_line, inner_width))),
             )?;
             row += 1;
         }
@@ -387,7 +401,7 @@ fn render_epic(
             _guard.tty,
             cursor::MoveTo(0, row),
             SetForegroundColor(Color::Cyan),
-            Print(format!("║{:^width$}║", &level_line, width = inner_width)),
+            Print(format!("║{}║", center_padded(&level_line, inner_width))),
         )?;
         row += 1;
         queue!(
