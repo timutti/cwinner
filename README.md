@@ -96,12 +96,27 @@ splash_duration_ms = 2000
 # intensity = "epic"
 ```
 
+## Levels
+
+| Level | XP | Name |
+|------:|---:|------|
+| 1 | 0 | Vibe Initiate |
+| 2 | 100 | Prompt Whisperer |
+| 3 | 500 | Vibe Architect |
+| 4 | 1,500 | Flow State Master |
+| 5 | 5,000 | Claude Sensei |
+| 6 | 10,000 | Code Whisperer |
+| 7 | 20,000 | Vibe Lord |
+| 8 | 35,000 | Zen Master |
+| 9 | 50,000 | Transcendent |
+| 10 | 75,000 | Singularity |
+
 ## Sound packs
 
 The default pack ships 5 synthesized multi-note WAV melodies (generated at install time, no external assets). A custom pack is a directory of WAV/OGG/MP3 files under `~/.config/cwinner/sounds/<name>/`:
 
 ```
-mini.wav        # quick double-tap (reserved, not currently played)
+mini.wav        # quick double-tap — played on level-up
 milestone.wav   # rising chime — Medium celebration without achievement
 epic.wav        # C major chord swell — Medium celebration with achievement
 fanfare.wav     # ascending trumpet call — Epic celebration
