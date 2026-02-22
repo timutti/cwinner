@@ -112,7 +112,13 @@ impl<'a> Drop for TermGuard<'a> {
     }
 }
 
-pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achievement: Option<&str>) {
+pub fn render(
+    tty_path: &str,
+    level: &CelebrationLevel,
+    state: &State,
+    achievement: Option<&str>,
+    label: Option<&str>,
+) {
     match level {
         CelebrationLevel::Off => {}
         CelebrationLevel::Mini => {
@@ -120,7 +126,7 @@ pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achieveme
             // (cwinner statusline command). No alternate screen render needed.
         }
         CelebrationLevel::Medium => {
-            let _ = render_toast(tty_path, state, achievement);
+            let _ = render_toast(tty_path, state, achievement, label);
         }
         CelebrationLevel::Epic => {
             let _ = render_epic(
@@ -148,24 +154,32 @@ fn tty_size(tty: &std::fs::File) -> (u16, u16) {
 }
 
 /// Format the toast message line for display.
-pub fn format_toast_msg(state: &State, achievement: Option<&str>) -> (String, Color) {
+pub fn format_toast_msg(
+    state: &State,
+    achievement: Option<&str>,
+    label: Option<&str>,
+) -> (String, Color) {
     if let Some(name) = achievement {
         (
             format!("🏆 {} │ {} │ {} XP", name, state.level_name, state.xp),
             Color::Yellow,
         )
     } else {
+        let prefix = label.unwrap_or("⚡");
         let next = level_threshold(state.level as usize);
         if next == u32::MAX {
             (
-                format!("⚡ {} │ {} XP │ MAX", state.level_name, state.xp),
+                format!("{} {} │ {} XP │ MAX", prefix, state.level_name, state.xp),
                 Color::Cyan,
             )
         } else {
             let (xp_in_level, xp_needed) = xp_progress(state.level, state.xp);
             let bar = xp_bar_string(xp_in_level, xp_needed, 15);
             (
-                format!("⚡ {} │ {} │ {} XP", state.level_name, bar, state.xp),
+                format!(
+                    "{} {} │ {} │ {} XP",
+                    prefix, state.level_name, bar, state.xp
+                ),
                 Color::Cyan,
             )
         }
@@ -178,7 +192,7 @@ pub fn format_toast_msg(state: &State, achievement: Option<&str>) -> (String, Co
 pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
     let mut tty = open_tty(tty_path)?;
     let (cols, rows) = tty_size(&tty);
-    let (msg, color) = format_toast_msg(state, None);
+    let (msg, color) = format_toast_msg(state, None, None);
 
     let pad_width = (cols as usize).saturating_sub(2);
     let bottom_row = rows.saturating_sub(1);
@@ -213,10 +227,15 @@ pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
 
 /// Brief alternate screen overlay — the only safe way to display in a terminal
 /// managed by Claude Code's differential renderer without corrupting its state.
-pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) -> io::Result<()> {
+pub fn render_toast(
+    tty_path: &str,
+    state: &State,
+    achievement: Option<&str>,
+    label: Option<&str>,
+) -> io::Result<()> {
     let mut tty = open_tty(tty_path)?;
     let (cols, rows) = tty_size(&tty);
-    let (msg, color) = format_toast_msg(state, achievement);
+    let (msg, color) = format_toast_msg(state, achievement, label);
     let duration = if achievement.is_some() {
         2500u64
     } else {
@@ -384,7 +403,7 @@ mod tests {
         state.xp = 250;
         state.level = 2;
         state.level_name = "Prompt Whisperer".into();
-        let (msg, color) = format_toast_msg(&state, None);
+        let (msg, color) = format_toast_msg(&state, None, None);
         assert!(msg.contains("Prompt Whisperer"));
         assert!(msg.contains("250 XP"));
         assert!(msg.contains('█') || msg.contains('░'));
@@ -397,12 +416,25 @@ mod tests {
         state.xp = 500;
         state.level = 3;
         state.level_name = "Vibe Architect".into();
-        let (msg, color) = format_toast_msg(&state, Some("First Commit"));
+        let (msg, color) = format_toast_msg(&state, Some("First Commit"), None);
         assert!(msg.contains("🏆"));
         assert!(msg.contains("First Commit"));
         assert!(msg.contains("Vibe Architect"));
         assert!(msg.contains("500 XP"));
         assert_eq!(color, Color::Yellow);
+    }
+
+    #[test]
+    fn test_format_toast_msg_with_label() {
+        let mut state = State::default();
+        state.xp = 250;
+        state.level = 2;
+        state.level_name = "Prompt Whisperer".into();
+        let (msg, color) = format_toast_msg(&state, None, Some("✓ Task Completed"));
+        assert!(msg.contains("✓ Task Completed"));
+        assert!(msg.contains("Prompt Whisperer"));
+        assert!(msg.contains("250 XP"));
+        assert_eq!(color, Color::Cyan);
     }
 
     /// Verify xp_progress returns consistent results for all levels.
@@ -511,7 +543,7 @@ mod tests {
         state.xp = 50;
         state.level = 1;
         state.level_name = "Vibe Initiate".into();
-        let (msg, color) = format_toast_msg(&state, None);
+        let (msg, color) = format_toast_msg(&state, None, None);
         assert!(msg.contains("⚡"));
         assert!(msg.contains("Vibe Initiate"));
         assert!(msg.contains("50 XP"));
@@ -525,7 +557,7 @@ mod tests {
         state.xp = 750;
         state.level = 3;
         state.level_name = "Vibe Architect".into();
-        let (msg, color) = format_toast_msg(&state, None);
+        let (msg, color) = format_toast_msg(&state, None, None);
         assert!(msg.contains("⚡"));
         assert!(msg.contains("Vibe Architect"));
         assert!(msg.contains("750 XP"));
@@ -541,7 +573,7 @@ mod tests {
         state.xp = 80000;
         state.level = 10;
         state.level_name = "Singularity".into();
-        let (msg, color) = format_toast_msg(&state, None);
+        let (msg, color) = format_toast_msg(&state, None, None);
         assert!(msg.contains("⚡"));
         assert!(msg.contains("Singularity"));
         assert!(msg.contains("80000 XP"));
@@ -556,7 +588,7 @@ mod tests {
         state.xp = 250;
         state.level = 2;
         state.level_name = "Prompt Whisperer".into();
-        let (msg, _) = format_toast_msg(&state, None);
+        let (msg, _) = format_toast_msg(&state, None, None);
         // Should not contain trophy emoji
         assert!(!msg.contains("🏆"));
         // Should contain lightning bolt
@@ -569,7 +601,7 @@ mod tests {
         state.xp = 250;
         state.level = 2;
         state.level_name = "Prompt Whisperer".into();
-        let (msg, _) = format_toast_msg(&state, None);
+        let (msg, _) = format_toast_msg(&state, None, None);
         // Verify the │ delimiters are present (3 sections)
         let delimiter_count = msg.matches('│').count();
         assert_eq!(

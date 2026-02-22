@@ -8,6 +8,8 @@
 
 Gamification for [Claude Code](https://claude.ai/code). Tracks your progress, awards XP, and plays sounds on commits, completed tasks, and breakthrough moments.
 
+![cwinner demo](assets/demo.gif)
+
 ## Features
 
 - **XP and 10 levels** — every action in Claude Code earns points (with 2x streak bonus at 5+ day streaks)

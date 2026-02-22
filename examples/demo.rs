@@ -34,12 +34,18 @@ fn main() {
         match input.trim() {
             "1" => {
                 println!("  -> Mini celebration...");
-                render(&tty, &CelebrationLevel::Mini, &state, None);
+                render(&tty, &CelebrationLevel::Mini, &state, None, None);
                 println!("  Done!");
             }
             "2" => {
                 println!("  -> Medium toast...");
-                render(&tty, &CelebrationLevel::Medium, &state, None);
+                render(
+                    &tty,
+                    &CelebrationLevel::Medium,
+                    &state,
+                    None,
+                    Some("✓ Task Completed"),
+                );
                 println!("  Done!");
             }
             "3" => {
@@ -49,6 +55,7 @@ fn main() {
                     &CelebrationLevel::Medium,
                     &state,
                     Some("First Commit"),
+                    Some("📝 Git Commit"),
                 );
                 println!("  Done!");
             }
@@ -59,6 +66,7 @@ fn main() {
                     &CelebrationLevel::Epic,
                     &state,
                     Some("ACHIEVEMENT UNLOCKED!"),
+                    Some("🚀 Git Push"),
                 );
                 println!("  Done!");
             }

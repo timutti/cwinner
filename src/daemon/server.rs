@@ -1,6 +1,8 @@
 use crate::achievements::check_achievements;
 use crate::audio::{celebration_to_sound, play_sound};
-use crate::celebration::{CelebrationLevel, decide, has_git_commit, xp_for_event};
+use crate::celebration::{
+    CelebrationLevel, decide, detect_git_command, has_git_commit, xp_for_event,
+};
 use crate::config::Config;
 use crate::event::{Event, EventKind};
 use crate::renderer::render;
@@ -181,7 +183,7 @@ async fn handle_connection(
         };
 
         // Process event under a single mutex lock, then clone state for rendering
-        let (level, achievement_name, is_streak_milestone, state_snapshot) = {
+        let (level, achievement_name, is_streak_milestone, event_label, state_snapshot) = {
             let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
             let (mut level, achievement_name, is_streak_milestone) =
                 process_event_with_state(&event, &mut s, &cfg);
@@ -201,9 +203,17 @@ async fn handle_connection(
                 level = level.max(CelebrationLevel::Medium);
             }
 
+            let label = make_event_label(&event);
+
             s.save();
             let snapshot = s.clone();
-            (level, achievement_name, is_streak_milestone, snapshot)
+            (
+                level,
+                achievement_name,
+                is_streak_milestone,
+                label,
+                snapshot,
+            )
         };
 
         eprintln!(
@@ -234,6 +244,7 @@ async fn handle_connection(
                     &level,
                     &state_snapshot,
                     achievement_name.as_deref(),
+                    event_label.as_deref(),
                 );
                 crate::renderer::finish_render(guard, &level);
             });
@@ -241,6 +252,34 @@ async fn handle_connection(
     }
 
     Ok(())
+}
+
+/// Generate a human-readable label for the event (shown in toast/splash).
+fn make_event_label(event: &Event) -> Option<String> {
+    match event.event {
+        EventKind::TaskCompleted => Some("✓ Task Completed".into()),
+        EventKind::SessionEnd => Some("👋 Session Complete".into()),
+        EventKind::GitCommit => Some("📝 Git Commit".into()),
+        EventKind::GitPush => Some("🚀 Git Push".into()),
+        EventKind::PostToolUse => {
+            let tool = event.tool.as_deref().unwrap_or("");
+            if tool == "Bash" {
+                if let Some(cmd) = event.metadata.get("command").and_then(|v| v.as_str()) {
+                    if let Some(git_kind) = detect_git_command(cmd) {
+                        return match git_kind {
+                            EventKind::GitPush => Some("🚀 Git Push".into()),
+                            EventKind::GitCommit => Some("📝 Git Commit".into()),
+                            _ => None,
+                        };
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Process an event against the given state, returning the celebration level,
