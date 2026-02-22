@@ -31,7 +31,7 @@ pub fn celebration_to_sound(
 ) -> Option<SoundKind> {
     match level {
         CelebrationLevel::Off => None,
-        CelebrationLevel::Mini => Some(SoundKind::Mini),
+        CelebrationLevel::Mini => None,
         CelebrationLevel::Medium => {
             if has_achievement {
                 Some(SoundKind::Epic)

@@ -26,6 +26,8 @@ enum Commands {
         #[arg(value_enum)]
         event: HookEvent,
     },
+    /// Output XP progress for Claude Code status line
+    Statusline,
     /// Update cwinner to the latest release
     Update,
     /// Run daemon directly (without service manager)
@@ -131,6 +133,17 @@ fn main() {
                 for a in locked {
                     println!("  ○ {} — {}", a.name, a.description);
                 }
+            }
+        }
+        Commands::Statusline => {
+            let s = State::load();
+            let (xp_in_level, xp_needed) = cwinner_lib::renderer::xp_progress(s.level, s.xp);
+            let next_xp = cwinner_lib::renderer::level_threshold(s.level as usize);
+            let bar = cwinner_lib::renderer::xp_bar_string(xp_in_level, xp_needed, 8);
+            if next_xp == u32::MAX {
+                print!("⚡ {} [{}] {} XP MAX", s.level_name, bar, s.xp);
+            } else {
+                print!("⚡ {} [{}] {} XP", s.level_name, bar, s.xp);
             }
         }
         Commands::Update => {

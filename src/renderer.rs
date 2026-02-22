@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 static RENDER_LOCK: Mutex<Option<Instant>> = Mutex::new(None);
 
 /// Minimum gap between renders to let Claude Code's renderer recover.
-const RENDER_COOLDOWN: Duration = Duration::from_millis(5000);
+const RENDER_COOLDOWN: Duration = Duration::from_millis(3500);
 
 /// Return the XP threshold for the level at `index` in the LEVELS table.
 /// Returns `u32::MAX` if `index` is out of range (i.e., past the last defined level).
@@ -110,7 +110,8 @@ pub fn render(tty_path: &str, level: &CelebrationLevel, state: &State, achieveme
     match level {
         CelebrationLevel::Off => {}
         CelebrationLevel::Mini => {
-            let _ = render_progress_bar(tty_path, state);
+            // Mini progress bar is now shown via Claude Code's status line
+            // (cwinner statusline command). No alternate screen render needed.
         }
         CelebrationLevel::Medium => {
             let _ = render_toast(tty_path, state, achievement);
