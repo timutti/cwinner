@@ -166,10 +166,7 @@ pub fn format_toast_msg(
         let next = level_threshold(state.level as usize);
         if next == u32::MAX {
             (
-                format!(
-                    "{} │ {} │ {} XP │ MAX",
-                    prefix, state.level_name, state.xp
-                ),
+                format!("{} │ {} │ {} XP │ MAX", prefix, state.level_name, state.xp),
                 Color::Cyan,
             )
         } else {
