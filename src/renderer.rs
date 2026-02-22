@@ -322,11 +322,7 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
             Print(format!("║{:^width$}║", achievement, width = inner_width)),
             cursor::MoveTo(0, mid_row),
             SetForegroundColor(Color::Cyan),
-            Print(format!(
-                "║{:^width$}║",
-                &level_line,
-                width = inner_width
-            )),
+            Print(format!("║{:^width$}║", &level_line, width = inner_width)),
             cursor::MoveTo(0, mid_row + 1),
             SetForegroundColor(Color::Yellow),
             Print(format!("║{:^width$}║", "", width = inner_width)),

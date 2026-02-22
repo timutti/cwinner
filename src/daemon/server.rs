@@ -87,8 +87,13 @@ pub async fn run() -> anyhow::Result<()> {
     let sessions: Arc<Mutex<SessionMap>> = Arc::new(Mutex::new(HashMap::new()));
 
     eprintln!("cwinnerd listening on {}", path.display());
-    eprintln!("[cwinnerd] config: routine={:?} task_completed={:?} milestone={:?} breakthrough={:?}",
-        cfg.intensity.routine, cfg.intensity.task_completed, cfg.intensity.milestone, cfg.intensity.breakthrough);
+    eprintln!(
+        "[cwinnerd] config: routine={:?} task_completed={:?} milestone={:?} breakthrough={:?}",
+        cfg.intensity.routine,
+        cfg.intensity.task_completed,
+        cfg.intensity.milestone,
+        cfg.intensity.breakthrough
+    );
 
     loop {
         let (stream, _) = listener.accept().await?;
