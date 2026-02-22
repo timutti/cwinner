@@ -296,13 +296,14 @@ fn send_hook_event(event: HookEvent, tty_path: &str) {
         .get("tool_name")
         .and_then(|v| v.as_str())
         .map(String::from);
+    // Claude Code sends PostToolUse only on success (failures go to PostToolUseFailure),
+    // and doesn't include exit_code in tool_response. Default to 0 for PostToolUse.
     let exit_code = meta
         .pointer("/tool_response/exit_code")
-        .and_then(|v| v.as_i64());
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
     let mut metadata = HashMap::new();
-    if let Some(code) = exit_code {
-        metadata.insert("exit_code".into(), serde_json::json!(code));
-    }
+    metadata.insert("exit_code".into(), serde_json::json!(exit_code));
     // Pass bash command text for custom trigger matching
     if let Some(input) = meta.get("tool_input") {
         if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
