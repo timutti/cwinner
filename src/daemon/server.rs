@@ -1,6 +1,6 @@
 use crate::achievements::check_achievements;
 use crate::audio::{celebration_to_sound, play_sound};
-use crate::celebration::{decide, xp_for_event, CelebrationLevel};
+use crate::celebration::{CelebrationLevel, decide, xp_for_event};
 use crate::config::Config;
 use crate::event::{Event, EventKind};
 use crate::renderer::render;
@@ -201,8 +201,10 @@ async fn handle_connection(
             (level, achievement_name, is_streak_milestone, snapshot)
         };
 
-        eprintln!("[cwinnerd] event={:?} tool={:?} level={:?} achievement={:?} streak_milestone={:?} tty={:?}",
-            event.event, event.tool, level, achievement_name, is_streak_milestone, tty_path);
+        eprintln!(
+            "[cwinnerd] event={:?} tool={:?} level={:?} achievement={:?} streak_milestone={:?} tty={:?}",
+            event.event, event.tool, level, achievement_name, is_streak_milestone, tty_path
+        );
 
         if level != CelebrationLevel::Off {
             let cfg2 = Arc::clone(&cfg);
@@ -319,10 +321,12 @@ mod tests {
 
         process_event_with_state(&event, &mut state, &cfg);
 
-        assert!(state
-            .achievements_unlocked
-            .iter()
-            .any(|id| id == "first_commit"));
+        assert!(
+            state
+                .achievements_unlocked
+                .iter()
+                .any(|id| id == "first_commit")
+        );
     }
 
     #[test]

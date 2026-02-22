@@ -340,7 +340,7 @@ mod tests {
     fn test_test_whisperer_unlocks_on_fail_to_pass() {
         let mut s = State::default();
         s.last_bash_exit = Some(1); // previous run failed
-                                    // current event: Bash exited 0
+        // current event: Bash exited 0
         let mut event = ev(EventKind::PostToolUse, Some("Bash"));
         event
             .metadata

@@ -816,10 +816,12 @@ mod tests {
 
         let content = std::fs::read_to_string(&settings_path).unwrap();
         let v: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert!(v["statusLine"]["command"]
-            .as_str()
-            .unwrap()
-            .contains("cwinner-statusline.sh"));
+        assert!(
+            v["statusLine"]["command"]
+                .as_str()
+                .unwrap()
+                .contains("cwinner-statusline.sh")
+        );
 
         let wrapper = claude_dir.join(STATUSLINE_WRAPPER_NAME);
         assert!(wrapper.exists());
@@ -849,10 +851,12 @@ mod tests {
 
         let content = std::fs::read_to_string(&settings_path).unwrap();
         let v: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert!(v["statusLine"]["command"]
-            .as_str()
-            .unwrap()
-            .contains("cwinner-statusline.sh"));
+        assert!(
+            v["statusLine"]["command"]
+                .as_str()
+                .unwrap()
+                .contains("cwinner-statusline.sh")
+        );
 
         let wrapper = claude_dir.join(STATUSLINE_WRAPPER_NAME);
         let script = std::fs::read_to_string(&wrapper).unwrap();
@@ -890,10 +894,12 @@ mod tests {
 
         let content = std::fs::read_to_string(&settings_path).unwrap();
         let v: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert!(v["statusLine"]["command"]
-            .as_str()
-            .unwrap()
-            .contains("cwinner-statusline.sh"));
+        assert!(
+            v["statusLine"]["command"]
+                .as_str()
+                .unwrap()
+                .contains("cwinner-statusline.sh")
+        );
         assert_eq!(
             v["statusLine"]["refresh_interval"].as_u64().unwrap(),
             5000,
@@ -960,10 +966,12 @@ mod tests {
         // Should still work — no double wrapping
         let content = std::fs::read_to_string(&settings_path).unwrap();
         let v: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert!(v["statusLine"]["command"]
-            .as_str()
-            .unwrap()
-            .contains("cwinner-statusline.sh"));
+        assert!(
+            v["statusLine"]["command"]
+                .as_str()
+                .unwrap()
+                .contains("cwinner-statusline.sh")
+        );
     }
 
     #[test]

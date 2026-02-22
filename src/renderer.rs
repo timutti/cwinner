@@ -1,5 +1,5 @@
 use crate::celebration::CelebrationLevel;
-use crate::state::{State, LEVELS};
+use crate::state::{LEVELS, State};
 use crossterm::{
     cursor, execute, queue,
     style::{Color, Print, ResetColor, SetForegroundColor},
