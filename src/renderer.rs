@@ -129,8 +129,7 @@ pub fn render(
             let _ = render_toast(tty_path, state, achievement, label);
         }
         CelebrationLevel::Epic => {
-            let headline = achievement.or(label).unwrap_or("ACHIEVEMENT UNLOCKED!");
-            let _ = render_epic(tty_path, state, headline);
+            let _ = render_epic(tty_path, state, achievement, label);
         }
     }
 }
@@ -162,11 +161,15 @@ pub fn format_toast_msg(
             Color::Yellow,
         )
     } else {
+        let sep = if label.is_some() { " │ " } else { " " };
         let prefix = label.unwrap_or("⚡");
         let next = level_threshold(state.level as usize);
         if next == u32::MAX {
             (
-                format!("{} │ {} │ {} XP │ MAX", prefix, state.level_name, state.xp),
+                format!(
+                    "{}{}{} │ {} XP │ MAX",
+                    prefix, sep, state.level_name, state.xp
+                ),
                 Color::Cyan,
             )
         } else {
@@ -174,8 +177,8 @@ pub fn format_toast_msg(
             let bar = xp_bar_string(xp_in_level, xp_needed, 15);
             (
                 format!(
-                    "{} │ {} │ {} │ {} XP",
-                    prefix, state.level_name, bar, state.xp
+                    "{}{}{} │ {} │ {} XP",
+                    prefix, sep, state.level_name, bar, state.xp
                 ),
                 Color::Cyan,
             )
@@ -272,7 +275,12 @@ pub fn render_toast(
 
 /// Epic celebration: confetti rain → splash box over confetti background.
 /// Single alternate screen session to avoid flicker.
-fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<()> {
+fn render_epic(
+    tty_path: &str,
+    state: &State,
+    achievement: Option<&str>,
+    label: Option<&str>,
+) -> io::Result<()> {
     let mut tty = open_tty(tty_path)?;
     let mut rng = rand::rng();
     let (cols, rows) = tty_size(&tty);
@@ -306,12 +314,19 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
     }
 
     // Phase 2: splash box drawn over confetti background (3.5s)
+    // Build content lines: label (event), achievement (if any), level info
+    let label_line = label.unwrap_or("⚡ Celebration");
+    let level_line = format!("Lvl {} {} ✦ {} XP", state.level, state.level_name, state.xp);
+
+    // Box has 3 or 4 content rows depending on whether achievement is present
+    let has_achievement = achievement.is_some();
+    let box_height: u16 = if has_achievement { 6 } else { 5 };
     let mid_row = rows / 2;
+    let box_top = mid_row.saturating_sub(box_height / 2);
     let inner_width = (cols as usize).saturating_sub(2);
     let border = "═".repeat(inner_width);
     let top = format!("╔{}╗", border);
     let bot = format!("╚{}╝", border);
-    let level_line = format!("Lvl {} {} ✦ {} XP", state.level, state.level_name, state.xp);
 
     let start = Instant::now();
     loop {
@@ -332,23 +347,53 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
         }
 
         // Draw splash box on top
+        let mut row = box_top;
         queue!(
             _guard.tty,
-            cursor::MoveTo(0, mid_row.saturating_sub(3)),
+            cursor::MoveTo(0, row),
             SetForegroundColor(Color::Yellow),
             Print(&top),
-            cursor::MoveTo(0, mid_row.saturating_sub(2)),
-            Print(format!("║{:^width$}║", "", width = inner_width)),
-            cursor::MoveTo(0, mid_row.saturating_sub(1)),
+        )?;
+        row += 1;
+        // Event label line (always shown)
+        queue!(
+            _guard.tty,
+            cursor::MoveTo(0, row),
             SetForegroundColor(Color::Green),
-            Print(format!("║{:^width$}║", achievement, width = inner_width)),
-            cursor::MoveTo(0, mid_row),
-            SetForegroundColor(Color::Cyan),
-            Print(format!("║{:^width$}║", &level_line, width = inner_width)),
-            cursor::MoveTo(0, mid_row + 1),
+            Print(format!("║{:^width$}║", label_line, width = inner_width)),
+        )?;
+        row += 1;
+        // Achievement line (only when unlocked)
+        if let Some(ach) = achievement {
+            let ach_line = format!("🏆 {}", ach);
+            queue!(
+                _guard.tty,
+                cursor::MoveTo(0, row),
+                SetForegroundColor(Color::Yellow),
+                Print(format!("║{:^width$}║", ach_line, width = inner_width)),
+            )?;
+            row += 1;
+        }
+        // Separator
+        queue!(
+            _guard.tty,
+            cursor::MoveTo(0, row),
             SetForegroundColor(Color::Yellow),
             Print(format!("║{:^width$}║", "", width = inner_width)),
-            cursor::MoveTo(0, mid_row + 2),
+        )?;
+        row += 1;
+        // Level line
+        queue!(
+            _guard.tty,
+            cursor::MoveTo(0, row),
+            SetForegroundColor(Color::Cyan),
+            Print(format!("║{:^width$}║", &level_line, width = inner_width)),
+        )?;
+        row += 1;
+        queue!(
+            _guard.tty,
+            cursor::MoveTo(0, row),
+            SetForegroundColor(Color::Yellow),
             Print(&bot),
             ResetColor,
         )?;
@@ -599,11 +644,11 @@ mod tests {
         state.level = 2;
         state.level_name = "Prompt Whisperer".into();
         let (msg, _) = format_toast_msg(&state, None, None);
-        // Verify the │ delimiters are present (4 sections: prefix │ level │ bar │ XP)
+        // Mini (no label): "⚡ Level │ bar │ XP" = 2 delimiters
         let delimiter_count = msg.matches('│').count();
         assert_eq!(
-            delimiter_count, 3,
-            "Expected 3 │ delimiters, got {}",
+            delimiter_count, 2,
+            "Expected 2 │ delimiters, got {}",
             delimiter_count
         );
     }
