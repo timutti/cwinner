@@ -64,6 +64,13 @@ fi
 tar xzf "${DL_DIR}/cwinner.tar.gz" -C "${DL_DIR}"
 
 mkdir -p "${INSTALL_DIR}"
+
+# Stop running daemon before replacing the binary so it doesn't hold the old file
+pkill -f "cwinner daemon" 2>/dev/null || true
+sleep 0.5
+
+# Remove old binary first so the OS allocates a fresh inode (avoids macOS VFS cache issues)
+rm -f "${INSTALL_DIR}/cwinner"
 mv "${DL_DIR}/cwinner" "${INSTALL_DIR}/cwinner"
 chmod +x "${INSTALL_DIR}/cwinner"
 
