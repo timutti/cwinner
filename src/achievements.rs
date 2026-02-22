@@ -159,6 +159,11 @@ pub fn check_achievements(state: &State, event: &Event) -> Vec<&'static Achievem
 
 fn is_unlocked(a: &Achievement, state: &State, event: &Event) -> bool {
     let tool = event.tool.as_deref().unwrap_or("");
+    let bash_command = event
+        .metadata
+        .get("command")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     match a.id {
         "first_commit" => state.commits_total >= 1,
         "commit_10" => state.commits_total >= 10,
@@ -167,7 +172,13 @@ fn is_unlocked(a: &Achievement, state: &State, event: &Event) -> bool {
         "streak_5" => state.commit_streak_days >= 5,
         "streak_10" => state.commit_streak_days >= 10,
         "streak_25" => state.commit_streak_days >= 25,
-        "first_push" => event.event == EventKind::GitPush,
+        "first_push" => {
+            event.event == EventKind::GitPush
+                || (event.event == EventKind::PostToolUse
+                    && tool == "Bash"
+                    && crate::celebration::detect_git_command(bash_command)
+                        == Some(EventKind::GitPush))
+        }
         "test_whisperer" => {
             event.event == EventKind::PostToolUse
                 && tool == "Bash"

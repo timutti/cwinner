@@ -32,6 +32,18 @@ pub fn check_custom_triggers(command: &str, cfg: &Config) -> Option<CelebrationL
     None
 }
 
+/// Check if a Bash command string contains a `git commit` subcommand.
+pub fn has_git_commit(command: &str) -> bool {
+    command
+        .split("&&")
+        .flat_map(|s| s.split(';'))
+        .flat_map(|s| s.split("||"))
+        .any(|seg| {
+            let t = seg.trim();
+            t.starts_with("git commit ") || t == "git commit"
+        })
+}
+
 /// Detect git commit/push from a Bash command string.
 /// If both are present (e.g. `git commit && git push`), returns GitPush (higher priority).
 pub fn detect_git_command(command: &str) -> Option<EventKind> {
