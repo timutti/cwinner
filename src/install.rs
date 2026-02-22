@@ -3,6 +3,9 @@ use std::path::Path;
 
 const HOOK_MARKER_START: &str = "# --- cwinner hook start ---";
 const HOOK_MARKER_END: &str = "# --- cwinner hook end ---";
+const STATUSLINE_WRAPPER_NAME: &str = "cwinner-statusline.sh";
+const STATUSLINE_WRAPPER_MARKER: &str = "# CWINNER_STATUSLINE_WRAPPER";
+const STATUSLINE_ORIGINAL_PREFIX: &str = "# CWINNER_ORIGINAL_CMD=";
 
 fn has_command(name: &str) -> bool {
     std::process::Command::new("sh")
@@ -35,6 +38,8 @@ pub fn install(binary_path: &Path) -> Result<()> {
     if claude_settings.exists() {
         add_claude_hooks(&claude_settings, binary_str)?;
         println!("✓ Claude Code hooks added to {}", claude_settings.display());
+        setup_statusline(&claude_settings, binary_str)?;
+        println!("✓ Status line XP bar configured");
     } else {
         println!("⚠ ~/.claude/settings.json not found — add hooks manually");
     }
@@ -118,29 +123,184 @@ pub fn add_claude_hooks(settings_path: &Path, binary: &str) -> Result<()> {
             v["hooks"][hook_name] = serde_json::json!([]);
         }
 
-        // Remove old entries with {"cmd": "...cwinner..."} format (migration cleanup)
+        // Remove existing cwinner entries (both legacy and current format)
+        // to ensure binary path is always up to date after updates
         if let Some(arr) = v["hooks"][hook_name].as_array_mut() {
-            arr.retain(|h| !entry_has_cwinner_legacy(h));
+            arr.retain(|h| !entry_has_cwinner(h) && !entry_has_cwinner_legacy(h));
         }
 
-        // Add only if cwinner hook is not already present
-        let already_present = v["hooks"][hook_name]
-            .as_array()
-            .is_some_and(|arr| arr.iter().any(entry_has_cwinner));
-
-        if !already_present {
-            v["hooks"][hook_name]
-                .as_array_mut()
-                .unwrap()
-                .push(serde_json::json!({
-                    "hooks": [{"type": "command", "command": cmd}]
-                }));
-        }
+        // Add with current binary path
+        v["hooks"][hook_name]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "hooks": [{"type": "command", "command": cmd}]
+            }));
     }
 
     std::fs::write(settings_path, serde_json::to_string_pretty(&v)?)?;
     Ok(())
 }
+
+pub fn setup_statusline(settings_path: &Path, binary: &str) -> Result<()> {
+    let claude_dir = settings_path
+        .parent()
+        .context("no parent dir for settings")?;
+    let wrapper_path = claude_dir.join(STATUSLINE_WRAPPER_NAME);
+    let wrapper_str = wrapper_path.to_str().unwrap_or("");
+
+    let content = std::fs::read_to_string(settings_path).unwrap_or_else(|_| "{}".into());
+    let mut v: serde_json::Value = serde_json::from_str(&content)?;
+
+    // Get current statusline command (if any)
+    let current_cmd = v
+        .get("statusLine")
+        .and_then(|s| s.get("command"))
+        .and_then(|c| c.as_str())
+        .map(String::from);
+
+    // Determine the original (user's) statusline command:
+    // - If settings already points to our wrapper, extract it from the wrapper file
+    // - Otherwise use whatever is currently configured
+    let original_cmd = if current_cmd.as_deref() == Some(wrapper_str) {
+        // Already our wrapper — extract original from the wrapper comment
+        wrapper_path
+            .exists()
+            .then(|| std::fs::read_to_string(&wrapper_path).ok())
+            .flatten()
+            .and_then(|c| {
+                c.lines()
+                    .find(|l| l.starts_with(STATUSLINE_ORIGINAL_PREFIX))
+                    .map(|l| l[STATUSLINE_ORIGINAL_PREFIX.len()..].to_string())
+            })
+    } else {
+        // Skip if the existing script already references cwinner statusline
+        // (user manually added it — don't double-wrap)
+        if let Some(ref cmd_path) = current_cmd {
+            if let Ok(script_content) = std::fs::read_to_string(cmd_path) {
+                if script_content.contains("cwinner statusline") {
+                    println!("  statusline already includes cwinner — skipping");
+                    return Ok(());
+                }
+            }
+        }
+        current_cmd.clone()
+    };
+
+    // Create/regenerate wrapper script (always regenerated to pick up new
+    // templates and binary paths after updates)
+    let script = if let Some(ref orig) = original_cmd {
+        STATUSLINE_WRAPPER_TEMPLATE
+            .replace("__ORIGINAL_CMD__", orig)
+            .replace("__BINARY__", binary)
+    } else {
+        STATUSLINE_SIMPLE_TEMPLATE.replace("__BINARY__", binary)
+    };
+
+    std::fs::write(&wrapper_path, &script)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&wrapper_path, std::fs::Permissions::from_mode(0o755))?;
+    }
+
+    // Update settings.json — only change "command", preserve other statusLine keys
+    if !v["statusLine"].is_object() {
+        v["statusLine"] = serde_json::json!({});
+    }
+    v["statusLine"]["type"] = serde_json::json!("command");
+    v["statusLine"]["command"] = serde_json::json!(wrapper_str);
+    std::fs::write(settings_path, serde_json::to_string_pretty(&v)?)?;
+
+    Ok(())
+}
+
+pub fn remove_statusline(settings_path: &Path) -> Result<()> {
+    let claude_dir = settings_path
+        .parent()
+        .context("no parent dir for settings")?;
+    let wrapper_path = claude_dir.join(STATUSLINE_WRAPPER_NAME);
+    let wrapper_str = wrapper_path.to_str().unwrap_or("");
+
+    let content = std::fs::read_to_string(settings_path)?;
+    let mut v: serde_json::Value = serde_json::from_str(&content)?;
+
+    // Check if current statusline points to our wrapper
+    let current_cmd = v
+        .get("statusLine")
+        .and_then(|s| s.get("command"))
+        .and_then(|c| c.as_str())
+        .map(String::from);
+
+    let is_our_wrapper = current_cmd.as_deref() == Some(wrapper_str)
+        || (wrapper_path.exists()
+            && std::fs::read_to_string(&wrapper_path)
+                .map(|c| c.contains(STATUSLINE_WRAPPER_MARKER))
+                .unwrap_or(false));
+
+    if !is_our_wrapper {
+        return Ok(());
+    }
+
+    // Parse original command from the wrapper script comment
+    let original_cmd = wrapper_path
+        .exists()
+        .then(|| std::fs::read_to_string(&wrapper_path).ok())
+        .flatten()
+        .and_then(|content| {
+            content
+                .lines()
+                .find(|l| l.starts_with(STATUSLINE_ORIGINAL_PREFIX))
+                .map(|l| l[STATUSLINE_ORIGINAL_PREFIX.len()..].to_string())
+        });
+
+    if let Some(ref original) = original_cmd {
+        if !original.is_empty() && Path::new(original).exists() {
+            // Restore original command, preserve other statusLine keys
+            v["statusLine"]["command"] = serde_json::json!(original);
+        } else {
+            // Original no longer exists — remove statusLine entirely
+            if let Some(obj) = v.as_object_mut() {
+                obj.remove("statusLine");
+            }
+        }
+    } else {
+        // No original saved — remove statusLine entirely
+        if let Some(obj) = v.as_object_mut() {
+            obj.remove("statusLine");
+        }
+    }
+
+    // Remove wrapper script
+    if wrapper_path.exists() {
+        let _ = std::fs::remove_file(&wrapper_path);
+    }
+
+    std::fs::write(settings_path, serde_json::to_string_pretty(&v)?)?;
+
+    Ok(())
+}
+
+const STATUSLINE_WRAPPER_TEMPLATE: &str = r#"#!/bin/bash
+# CWINNER_STATUSLINE_WRAPPER
+# CWINNER_ORIGINAL_CMD=__ORIGINAL_CMD__
+_input=$(cat)
+_base_output=$(printf '%s' "$_input" | __ORIGINAL_CMD__)
+_base_output="${_base_output%$'\n'}"
+_cwinner_xp=$(__BINARY__ statusline 2>/dev/null)
+if [ -n "$_base_output" ] && [ -n "$_cwinner_xp" ]; then
+  printf '%s | %s\n' "$_base_output" "$_cwinner_xp"
+elif [ -n "$_cwinner_xp" ]; then
+  printf '%s\n' "$_cwinner_xp"
+elif [ -n "$_base_output" ]; then
+  printf '%s\n' "$_base_output"
+fi
+"#;
+
+const STATUSLINE_SIMPLE_TEMPLATE: &str = r#"#!/bin/bash
+# CWINNER_STATUSLINE_WRAPPER
+__BINARY__ statusline 2>/dev/null
+"#;
 
 /// Strip the shebang line from template content (the outer file manages it).
 fn strip_shebang(content: &str) -> &str {
@@ -320,10 +480,12 @@ pub fn uninstall() -> Result<()> {
         }
     }
 
-    // 2. Remove cwinner hooks from Claude Code settings
+    // 2. Remove cwinner from Claude Code settings (statusline + hooks)
     let claude_settings = dirs::home_dir().map(|h| h.join(".claude").join("settings.json"));
     if let Some(ref path) = claude_settings {
         if path.exists() {
+            remove_statusline(path)?;
+            println!("✓ Removed cwinner status line");
             remove_claude_hooks(path)?;
             println!("✓ Removed cwinner hooks from {}", path.display());
         }
@@ -640,6 +802,377 @@ mod tests {
 
         let remaining = std::fs::read_to_string(&hook_path).unwrap();
         assert_eq!(remaining, content, "file should be unchanged");
+    }
+
+    #[test]
+    fn test_setup_statusline_no_existing() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        let settings_path = claude_dir.join("settings.json");
+        std::fs::write(&settings_path, "{}").unwrap();
+
+        setup_statusline(&settings_path, "/usr/local/bin/cwinner").unwrap();
+
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert!(v["statusLine"]["command"]
+            .as_str()
+            .unwrap()
+            .contains("cwinner-statusline.sh"));
+
+        let wrapper = claude_dir.join(STATUSLINE_WRAPPER_NAME);
+        assert!(wrapper.exists());
+        let script = std::fs::read_to_string(&wrapper).unwrap();
+        assert!(script.contains(STATUSLINE_WRAPPER_MARKER));
+        assert!(script.contains("cwinner statusline"));
+    }
+
+    #[test]
+    fn test_setup_statusline_with_existing() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+
+        // Create an existing statusline script
+        let original_script = claude_dir.join("my-statusline.sh");
+        std::fs::write(&original_script, "#!/bin/bash\necho hello").unwrap();
+
+        let settings_path = claude_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::json!({"statusLine": {"type": "command", "command": original_script.to_str().unwrap()}}).to_string(),
+        )
+        .unwrap();
+
+        setup_statusline(&settings_path, "/usr/local/bin/cwinner").unwrap();
+
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert!(v["statusLine"]["command"]
+            .as_str()
+            .unwrap()
+            .contains("cwinner-statusline.sh"));
+
+        let wrapper = claude_dir.join(STATUSLINE_WRAPPER_NAME);
+        let script = std::fs::read_to_string(&wrapper).unwrap();
+        assert!(
+            script.contains(original_script.to_str().unwrap()),
+            "wrapper should reference original script"
+        );
+    }
+
+    #[test]
+    fn test_setup_statusline_preserves_extra_keys() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+
+        let original_script = claude_dir.join("my-statusline.sh");
+        std::fs::write(&original_script, "#!/bin/bash\necho hello").unwrap();
+
+        let settings_path = claude_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::json!({
+                "statusLine": {
+                    "type": "command",
+                    "command": original_script.to_str().unwrap(),
+                    "refresh_interval": 5000,
+                    "enabled": true
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        setup_statusline(&settings_path, "/usr/local/bin/cwinner").unwrap();
+
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert!(v["statusLine"]["command"]
+            .as_str()
+            .unwrap()
+            .contains("cwinner-statusline.sh"));
+        assert_eq!(
+            v["statusLine"]["refresh_interval"].as_u64().unwrap(),
+            5000,
+            "extra keys should be preserved"
+        );
+        assert_eq!(
+            v["statusLine"]["enabled"].as_bool().unwrap(),
+            true,
+            "extra keys should be preserved"
+        );
+    }
+
+    #[test]
+    fn test_remove_statusline_preserves_extra_keys() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+
+        let original_script = claude_dir.join("my-statusline.sh");
+        std::fs::write(&original_script, "#!/bin/bash\necho hello").unwrap();
+
+        let settings_path = claude_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::json!({
+                "statusLine": {
+                    "type": "command",
+                    "command": original_script.to_str().unwrap(),
+                    "refresh_interval": 5000
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        setup_statusline(&settings_path, "/usr/local/bin/cwinner").unwrap();
+        remove_statusline(&settings_path).unwrap();
+
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(
+            v["statusLine"]["command"].as_str().unwrap(),
+            original_script.to_str().unwrap(),
+            "should restore original command"
+        );
+        assert_eq!(
+            v["statusLine"]["refresh_interval"].as_u64().unwrap(),
+            5000,
+            "extra keys should survive install+uninstall round-trip"
+        );
+    }
+
+    #[test]
+    fn test_setup_statusline_idempotent() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        let settings_path = claude_dir.join("settings.json");
+        std::fs::write(&settings_path, "{}").unwrap();
+
+        setup_statusline(&settings_path, "/usr/local/bin/cwinner").unwrap();
+        setup_statusline(&settings_path, "/usr/local/bin/cwinner").unwrap();
+
+        // Should still work — no double wrapping
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert!(v["statusLine"]["command"]
+            .as_str()
+            .unwrap()
+            .contains("cwinner-statusline.sh"));
+    }
+
+    #[test]
+    fn test_remove_statusline_restores_original() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+
+        // Create an existing statusline script
+        let original_script = claude_dir.join("my-statusline.sh");
+        std::fs::write(&original_script, "#!/bin/bash\necho hello").unwrap();
+
+        let settings_path = claude_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::json!({"statusLine": {"type": "command", "command": original_script.to_str().unwrap()}}).to_string(),
+        )
+        .unwrap();
+
+        // Install
+        setup_statusline(&settings_path, "/usr/local/bin/cwinner").unwrap();
+
+        // Uninstall
+        remove_statusline(&settings_path).unwrap();
+
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(
+            v["statusLine"]["command"].as_str().unwrap(),
+            original_script.to_str().unwrap(),
+            "should restore original statusline command"
+        );
+        assert!(
+            !claude_dir.join(STATUSLINE_WRAPPER_NAME).exists(),
+            "wrapper should be deleted"
+        );
+    }
+
+    #[test]
+    fn test_remove_statusline_no_original() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        let settings_path = claude_dir.join("settings.json");
+        std::fs::write(&settings_path, "{}").unwrap();
+
+        // Install (no existing statusline)
+        setup_statusline(&settings_path, "/usr/local/bin/cwinner").unwrap();
+
+        // Uninstall
+        remove_statusline(&settings_path).unwrap();
+
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert!(
+            v.get("statusLine").is_none(),
+            "statusLine should be removed entirely when no original"
+        );
+        assert!(
+            !claude_dir.join(STATUSLINE_WRAPPER_NAME).exists(),
+            "wrapper should be deleted"
+        );
+    }
+
+    // --- Update-compatibility tests ---
+
+    #[test]
+    fn test_update_regenerates_wrapper_with_new_binary() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+
+        let original_script = claude_dir.join("my-statusline.sh");
+        std::fs::write(&original_script, "#!/bin/bash\necho hello").unwrap();
+
+        let settings_path = claude_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::json!({"statusLine": {"type": "command", "command": original_script.to_str().unwrap()}}).to_string(),
+        )
+        .unwrap();
+
+        // First install with old binary
+        setup_statusline(&settings_path, "/old/path/cwinner").unwrap();
+
+        let wrapper = claude_dir.join(STATUSLINE_WRAPPER_NAME);
+        let script_v1 = std::fs::read_to_string(&wrapper).unwrap();
+        assert!(script_v1.contains("/old/path/cwinner"));
+
+        // Update: reinstall with new binary path
+        setup_statusline(&settings_path, "/new/path/cwinner").unwrap();
+
+        let script_v2 = std::fs::read_to_string(&wrapper).unwrap();
+        assert!(
+            script_v2.contains("/new/path/cwinner"),
+            "wrapper should use new binary path after update"
+        );
+        assert!(
+            !script_v2.contains("/old/path/cwinner"),
+            "old binary path should be gone"
+        );
+        assert!(
+            script_v2.contains(original_script.to_str().unwrap()),
+            "original script reference should be preserved"
+        );
+    }
+
+    #[test]
+    fn test_update_regenerates_simple_wrapper() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        let settings_path = claude_dir.join("settings.json");
+        std::fs::write(&settings_path, "{}").unwrap();
+
+        // First install (no existing statusline)
+        setup_statusline(&settings_path, "/old/cwinner").unwrap();
+
+        let wrapper = claude_dir.join(STATUSLINE_WRAPPER_NAME);
+        let script_v1 = std::fs::read_to_string(&wrapper).unwrap();
+        assert!(script_v1.contains("/old/cwinner"));
+
+        // Update with new binary
+        setup_statusline(&settings_path, "/new/cwinner").unwrap();
+
+        let script_v2 = std::fs::read_to_string(&wrapper).unwrap();
+        assert!(
+            script_v2.contains("/new/cwinner"),
+            "simple wrapper should use new binary"
+        );
+        assert!(
+            !script_v2.contains("/old/cwinner"),
+            "old binary should be gone"
+        );
+    }
+
+    #[test]
+    fn test_update_preserves_original_through_reinstalls() {
+        let dir = tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+
+        let original_script = claude_dir.join("user-statusline.sh");
+        std::fs::write(&original_script, "#!/bin/bash\necho original").unwrap();
+
+        let settings_path = claude_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::json!({"statusLine": {"type": "command", "command": original_script.to_str().unwrap()}}).to_string(),
+        )
+        .unwrap();
+
+        // Install v1 → update v2 → update v3
+        setup_statusline(&settings_path, "/v1/cwinner").unwrap();
+        setup_statusline(&settings_path, "/v2/cwinner").unwrap();
+        setup_statusline(&settings_path, "/v3/cwinner").unwrap();
+
+        // Original reference should survive all updates
+        let wrapper = claude_dir.join(STATUSLINE_WRAPPER_NAME);
+        let script = std::fs::read_to_string(&wrapper).unwrap();
+        assert!(
+            script.contains(original_script.to_str().unwrap()),
+            "original user script should survive multiple updates"
+        );
+        assert!(script.contains("/v3/cwinner"));
+        assert!(!script.contains("/v1/cwinner"));
+        assert!(!script.contains("/v2/cwinner"));
+
+        // Uninstall should still restore original
+        remove_statusline(&settings_path).unwrap();
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(
+            v["statusLine"]["command"].as_str().unwrap(),
+            original_script.to_str().unwrap(),
+            "uninstall after multiple updates should restore original"
+        );
+    }
+
+    #[test]
+    fn test_hooks_update_binary_path() {
+        let dir = tempdir().unwrap();
+        let settings_path = dir.path().join("settings.json");
+        std::fs::write(&settings_path, "{}").unwrap();
+
+        // Install with old binary
+        add_claude_hooks(&settings_path, "/old/cwinner").unwrap();
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        assert!(content.contains("/old/cwinner"));
+
+        // Reinstall with new binary (simulating update)
+        add_claude_hooks(&settings_path, "/new/cwinner").unwrap();
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // Should have new path, not old
+        assert!(
+            content.contains("/new/cwinner"),
+            "hooks should use new binary path"
+        );
+        assert!(
+            !content.contains("/old/cwinner"),
+            "old binary path should be removed"
+        );
+
+        // Should not duplicate hooks
+        let hooks = v["hooks"]["PostToolUse"].as_array().unwrap();
+        let cwinner_count = hooks.iter().filter(|h| entry_has_cwinner(h)).count();
+        assert_eq!(cwinner_count, 1, "no duplicate hooks after update");
     }
 
     #[test]
