@@ -246,9 +246,9 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
     )?;
     let _guard = TermGuard { tty: &mut tty };
 
-    // Phase 1: confetti rain (1.5s)
-    let frames = 15u64;
-    let frame_ms = 1500 / frames;
+    // Phase 1: confetti rain (3s)
+    let frames = 30u64;
+    let frame_ms = 3000 / frames;
     for _ in 0..frames {
         for _ in 0..(cols / 4) {
             let col = rng.random_range(0..cols);
@@ -266,7 +266,7 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
         thread::sleep(Duration::from_millis(frame_ms));
     }
 
-    // Phase 2: splash box drawn over confetti background (2s)
+    // Phase 2: splash box drawn over confetti background (3.5s)
     let mid_row = rows / 2;
     let inner_width = (cols as usize).saturating_sub(2);
     let border = "═".repeat(inner_width);
@@ -298,7 +298,7 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
         ResetColor,
     )?;
     _guard.tty.flush()?;
-    thread::sleep(Duration::from_millis(2000));
+    thread::sleep(Duration::from_millis(3500));
 
     Ok(())
 }
