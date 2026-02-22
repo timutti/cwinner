@@ -14,7 +14,7 @@ Gamification for [Claude Code](https://claude.ai/code). Tracks your progress, aw
 - **Commit streaks** — tracks consecutive days, streak milestones at 5/10/25/100 days
 - **Session tracking** — duration milestones at 1h/3h/8h, epic celebration for sessions with commits
 - **Custom triggers** — config-based substring matching on bash commands
-- **Daemon** — runs in the background as a systemd/launchd service, receives events over a Unix socket
+- **Daemon** — auto-starts in background, receives events over a Unix socket
 
 ## Install
 
@@ -44,6 +44,7 @@ cargo build --release
 
 `cwinner install` does everything automatically:
 - adds hooks to `~/.claude/settings.json`
+- sets up status line XP bar (wraps your existing statusline script)
 - installs git hooks (`post-commit`, `pre-push`)
 - generates a default sound pack to `~/.config/cwinner/sounds/default/`
 - registers a systemd user service (Linux) or launchd agent (macOS)
@@ -53,6 +54,7 @@ cargo build --release
 ```
 cwinner status        # current level, XP, streak
 cwinner stats         # detailed stats and achievements
+cwinner statusline    # XP progress for Claude Code status line
 cwinner update        # self-update to latest release
 cwinner sounds list   # available sound packs
 cwinner install       # install
@@ -65,8 +67,8 @@ cwinner uninstall     # uninstall
 
 ```toml
 [intensity]
-routine = "off"           # off | mini | medium | epic
-task_completed = "off"    # separate from milestone to avoid toast spam during agent work
+routine = "mini"          # off | mini | medium | epic
+task_completed = "medium" # separate from milestone to avoid toast spam during agent work
 milestone = "medium"
 breakthrough = "epic"
 
@@ -114,7 +116,7 @@ git post-commit hook   →                      ├ decide celebration level
                                                └ render visual (alternate screen)
 ```
 
-The daemon (`cwinnerd`) runs persistently as a systemd user service (Linux) or launchd agent (macOS). Claude Code hooks use the `cwinner hook` Rust CLI subcommand. Git hooks are bash scripts that use `socat` or `nc` to send events. All hooks are fire-and-forget.
+The daemon auto-starts from hook events as a detached background process (inherits the session's audio context for reliable sound playback). Claude Code hooks use the `cwinner hook` CLI subcommand. Git hooks are bash scripts that send events over the Unix socket. All hooks are fire-and-forget.
 
 ## Development
 
