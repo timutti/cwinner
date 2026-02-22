@@ -196,6 +196,11 @@ async fn handle_connection(
                 level = level.max(dur_level);
             }
 
+            // Achievement unlock → upgrade to at least Medium so toast is shown
+            if achievement_name.is_some() {
+                level = level.max(CelebrationLevel::Medium);
+            }
+
             s.save();
             let snapshot = s.clone();
             (level, achievement_name, is_streak_milestone, snapshot)
