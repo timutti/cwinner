@@ -220,6 +220,38 @@ fn get_tty() -> String {
                 }
             }
         }
+
+        // Claude Code hooks redirect all fds, so ttyname() fails.
+        // Walk up the process tree via `ps` to find an ancestor with a real TTY
+        // (same strategy as the Linux /proc walk above).
+        let mut pid = std::process::id().to_string();
+        for _ in 0..10 {
+            if let Ok(output) = std::process::Command::new("ps")
+                .args(["-o", "ppid=,tty=", "-p", &pid])
+                .output()
+            {
+                let line = String::from_utf8_lossy(&output.stdout);
+                let parts: Vec<&str> = line.trim().split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let ppid = parts[0];
+                    let tty = parts[1];
+                    if tty != "??" && !tty.is_empty() {
+                        let dev_path = format!("/dev/{tty}");
+                        if std::path::Path::new(&dev_path).exists() {
+                            return dev_path;
+                        }
+                    }
+                    if ppid == "0" || ppid == "1" || ppid == pid {
+                        break;
+                    }
+                    pid = ppid.to_string();
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
     }
 
     // Universal fallback
