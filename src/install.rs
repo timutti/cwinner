@@ -575,6 +575,16 @@ splash_screen = true
 progress_bar = true
 confetti_duration_ms = 1500
 splash_duration_ms = 2000
+
+# [triggers]
+# Custom triggers — celebrate specific patterns in tool output.
+# Each trigger needs: name, pattern (regex), intensity (off/mini/medium/epic).
+#
+# Example:
+# [[triggers.custom]]
+# name = "deploy"
+# pattern = "git push.*production"
+# intensity = "epic"
 "#;
 
 #[cfg(test)]
