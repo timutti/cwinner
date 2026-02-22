@@ -7,14 +7,6 @@ const STATUSLINE_WRAPPER_NAME: &str = "cwinner-statusline.sh";
 const STATUSLINE_WRAPPER_MARKER: &str = "# CWINNER_STATUSLINE_WRAPPER";
 const STATUSLINE_ORIGINAL_PREFIX: &str = "# CWINNER_ORIGINAL_CMD=";
 
-fn has_command(name: &str) -> bool {
-    std::process::Command::new("sh")
-        .args(["-c", &format!("command -v {name}")])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
 fn entry_has_cwinner(entry: &serde_json::Value) -> bool {
     entry["hooks"].as_array().is_some_and(|inner| {
         inner
@@ -44,22 +36,17 @@ pub fn install(binary_path: &Path) -> Result<()> {
         println!("⚠ ~/.claude/settings.json not found — add hooks manually");
     }
 
-    // 2. Git global hooks
+    // 2. Clean up legacy git hooks from previous versions
     let git_hooks_dir = dirs::config_dir()
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
         .join("git")
         .join("hooks");
-    std::fs::create_dir_all(&git_hooks_dir)?;
-    install_git_hook(
-        &git_hooks_dir.join("post-commit"),
-        include_str!("hooks/templates/git_post_commit.sh"),
-    )?;
-    install_git_hook(
-        &git_hooks_dir.join("pre-push"),
-        include_str!("hooks/templates/git_pre_push.sh"),
-    )?;
-    println!("✓ Git hooks installed to {}", git_hooks_dir.display());
-    check_socket_tools();
+    for hook_name in &["post-commit", "pre-push"] {
+        let hook_path = git_hooks_dir.join(hook_name);
+        if hook_path.exists() {
+            remove_git_hook_section(&hook_path)?;
+        }
+    }
 
     // 3. Default config
     let config_dir = dirs::config_dir().context("no config dir")?.join("cwinner");
@@ -303,6 +290,7 @@ __BINARY__ statusline 2>/dev/null
 "#;
 
 /// Strip the shebang line from template content (the outer file manages it).
+#[cfg(test)]
 fn strip_shebang(content: &str) -> &str {
     if content.starts_with("#!") {
         content.find('\n').map(|i| &content[i + 1..]).unwrap_or("")
@@ -311,6 +299,7 @@ fn strip_shebang(content: &str) -> &str {
     }
 }
 
+#[cfg(test)]
 fn install_git_hook(path: &Path, template: &str) -> Result<()> {
     let section = format!(
         "{}\n{}{}\n",
@@ -357,16 +346,6 @@ fn install_git_hook(path: &Path, template: &str) -> Result<()> {
     Ok(())
 }
 
-fn check_socket_tools() {
-    if !has_command("socat") && !has_command("nc") {
-        println!("⚠ Neither socat nor nc found — git hooks won't be able to send events");
-        if cfg!(target_os = "macos") {
-            println!("  Install with: brew install socat");
-        } else {
-            println!("  Install with: sudo apt install socat  (or: sudo dnf install socat)");
-        }
-    }
-}
 
 fn register_service(binary: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
@@ -445,20 +424,24 @@ fn register_launchd(binary: &str) -> Result<()> {
 }
 
 pub fn uninstall() -> Result<()> {
-    // 1. Stop + disable service
+    // 1. Stop daemon + clean up legacy service files
+    let _ = std::process::Command::new("pkill")
+        .args(["-f", "cwinnerd"])
+        .status();
     #[cfg(target_os = "linux")]
     {
-        let _ = std::process::Command::new("systemctl")
-            .args(["--user", "stop", "cwinner"])
-            .status();
-        let _ = std::process::Command::new("systemctl")
-            .args(["--user", "disable", "cwinner"])
-            .status();
+        // Remove legacy systemd unit if present
         if let Some(unit) = dirs::home_dir().map(|h| h.join(".config/systemd/user/cwinner.service"))
         {
             if unit.exists() {
+                let _ = std::process::Command::new("systemctl")
+                    .args(["--user", "stop", "cwinner"])
+                    .status();
+                let _ = std::process::Command::new("systemctl")
+                    .args(["--user", "disable", "cwinner"])
+                    .status();
                 std::fs::remove_file(&unit)?;
-                println!("✓ Removed {}", unit.display());
+                println!("✓ Removed legacy {}", unit.display());
                 let _ = std::process::Command::new("systemctl")
                     .args(["--user", "daemon-reload"])
                     .status();

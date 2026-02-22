@@ -136,12 +136,10 @@ pub fn update(binary_path: &Path) -> Result<()> {
 }
 
 fn stop_daemon() {
-    #[cfg(target_os = "linux")]
-    {
-        let _ = Command::new("systemctl")
-            .args(["--user", "stop", "cwinner"])
-            .status();
-    }
+    // Kill the daemon process (auto-starts from hooks on next event)
+    let _ = Command::new("pkill").args(["-f", "cwinnerd"]).status();
+
+    // macOS: also unload launchd agent if present
     #[cfg(target_os = "macos")]
     {
         let _ = Command::new("launchctl")

@@ -32,23 +32,51 @@ pub fn check_custom_triggers(command: &str, cfg: &Config) -> Option<CelebrationL
     None
 }
 
+/// Detect git commit/push from a Bash command string.
+/// If both are present (e.g. `git commit && git push`), returns GitPush (higher priority).
+pub fn detect_git_command(command: &str) -> Option<EventKind> {
+    let mut found = None;
+    for segment in command.split("&&").flat_map(|s| s.split(';')).flat_map(|s| s.split("||")) {
+        let trimmed = segment.trim();
+        if trimmed.starts_with("git push ") || trimmed == "git push" {
+            return Some(EventKind::GitPush); // highest priority, return immediately
+        }
+        if trimmed.starts_with("git commit ") || trimmed == "git commit" {
+            found = Some(EventKind::GitCommit);
+        }
+    }
+    found
+}
+
 pub fn decide(event: &Event, state: &State, cfg: &Config) -> CelebrationLevel {
     // Breakthrough: bash fail → pass
     if event.event == EventKind::PostToolUse {
         if let Some(tool) = &event.tool {
             if tool == "Bash" {
-                // Check custom triggers first — if a command matches, use trigger's intensity
-                if let Some(command) = event.metadata.get("command").and_then(|v| v.as_str()) {
-                    if let Some(level) = check_custom_triggers(command, cfg) {
-                        return level;
-                    }
-                }
-
                 let exit_code = event
                     .metadata
                     .get("exit_code")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(-1);
+
+                // Check custom triggers first — if a command matches, use trigger's intensity
+                if let Some(command) = event.metadata.get("command").and_then(|v| v.as_str()) {
+                    if let Some(level) = check_custom_triggers(command, cfg) {
+                        return level;
+                    }
+
+                    // Detect git commit/push in successful Bash commands
+                    if exit_code == 0 {
+                        if let Some(git_kind) = detect_git_command(command) {
+                            return match git_kind {
+                                EventKind::GitCommit => CelebrationLevel::from(&cfg.intensity.milestone),
+                                EventKind::GitPush => CelebrationLevel::from(&cfg.intensity.breakthrough),
+                                _ => unreachable!(),
+                            };
+                        }
+                    }
+                }
+
                 let prev_failed = state.last_bash_exit.map(|c| c != 0).unwrap_or(false);
                 if exit_code == 0 && prev_failed {
                     return CelebrationLevel::from(&cfg.intensity.breakthrough);
@@ -277,8 +305,8 @@ mod tests {
         let state = State::default();
         let event = make_bash_event_with_command("git push origin main", 0);
         let result = decide(&event, &state, &cfg);
-        // No triggers, exit_code=0, routine → Mini
-        assert_eq!(result, CelebrationLevel::Mini);
+        // No triggers, but "git push" detected → breakthrough (Epic)
+        assert_eq!(result, CelebrationLevel::Epic);
     }
 
     #[test]
@@ -303,5 +331,60 @@ mod tests {
         let event = make_event(EventKind::PostToolUse, Some("Write"));
         let result = decide(&event, &state, &cfg);
         assert_eq!(result, CelebrationLevel::Mini);
+    }
+
+    // --- detect_git_command tests ---
+
+    #[test]
+    fn test_detect_git_push() {
+        assert_eq!(detect_git_command("git push origin main"), Some(EventKind::GitPush));
+        assert_eq!(detect_git_command("git push"), Some(EventKind::GitPush));
+    }
+
+    #[test]
+    fn test_detect_git_commit() {
+        assert_eq!(detect_git_command("git commit -m \"msg\""), Some(EventKind::GitCommit));
+        assert_eq!(detect_git_command("git commit"), Some(EventKind::GitCommit));
+    }
+
+    #[test]
+    fn test_detect_git_commit_and_push_chain() {
+        // "git add . && git commit -m x && git push" — push wins (last git command)
+        let result = detect_git_command("git add . && git commit -m 'fix' && git push origin main");
+        assert_eq!(result, Some(EventKind::GitPush));
+    }
+
+    #[test]
+    fn test_detect_no_git_command() {
+        assert_eq!(detect_git_command("cargo test --release"), None);
+        assert_eq!(detect_git_command("git status"), None);
+        assert_eq!(detect_git_command("git diff"), None);
+    }
+
+    #[test]
+    fn test_bash_git_commit_is_milestone() {
+        let cfg = Config::default();
+        let state = State::default();
+        let event = make_bash_event_with_command("git commit -m 'fix bug'", 0);
+        let result = decide(&event, &state, &cfg);
+        assert_eq!(result, CelebrationLevel::Medium); // milestone default
+    }
+
+    #[test]
+    fn test_bash_git_push_is_epic() {
+        let cfg = Config::default();
+        let state = State::default();
+        let event = make_bash_event_with_command("git push origin master", 0);
+        let result = decide(&event, &state, &cfg);
+        assert_eq!(result, CelebrationLevel::Epic); // breakthrough default
+    }
+
+    #[test]
+    fn test_bash_git_push_failure_is_off() {
+        let cfg = Config::default();
+        let state = State::default();
+        let event = make_bash_event_with_command("git push origin master", 1);
+        let result = decide(&event, &state, &cfg);
+        assert_eq!(result, CelebrationLevel::Off);
     }
 }

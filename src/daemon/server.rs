@@ -1,6 +1,6 @@
 use crate::achievements::check_achievements;
 use crate::audio::{celebration_to_sound, play_sound};
-use crate::celebration::{CelebrationLevel, decide, xp_for_event};
+use crate::celebration::{CelebrationLevel, decide, detect_git_command, xp_for_event};
 use crate::config::Config;
 use crate::event::{Event, EventKind};
 use crate::renderer::render;
@@ -259,7 +259,18 @@ pub fn process_event_with_state(
         state.add_xp(xp);
     }
     let mut is_streak_milestone = false;
-    if event.event == EventKind::GitCommit {
+    // Record commit from GitCommit event or from Bash "git commit" command
+    let is_git_commit = event.event == EventKind::GitCommit
+        || (event.event == EventKind::PostToolUse
+            && event.tool.as_deref() == Some("Bash")
+            && event.metadata.get("exit_code").and_then(|v| v.as_i64()) == Some(0)
+            && event
+                .metadata
+                .get("command")
+                .and_then(|v| v.as_str())
+                .and_then(detect_git_command)
+                == Some(EventKind::GitCommit));
+    if is_git_commit {
         let commit_result = state.record_commit();
         if commit_result.streak_milestone.is_some() {
             is_streak_milestone = true;
