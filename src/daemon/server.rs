@@ -280,17 +280,10 @@ pub fn process_event_with_state(
     if let Some(tool) = &event.tool {
         state.record_tool_use(tool);
     }
-    // Check achievements BEFORE updating last_bash_exit (test_whisperer needs old value)
     let newly_unlocked = check_achievements(state, event);
     let achievement_name = newly_unlocked.first().map(|a| a.name.to_string());
     for a in &newly_unlocked {
         state.unlock_achievement(a.id);
-    }
-    // Update last_bash_exit AFTER achievements checked
-    if event.event == EventKind::PostToolUse {
-        if let Some(code) = event.metadata.get("exit_code").and_then(|v| v.as_i64()) {
-            state.last_bash_exit = Some(code as i32);
-        }
     }
     (level, achievement_name, is_streak_milestone)
 }

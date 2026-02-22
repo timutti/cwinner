@@ -64,17 +64,10 @@ pub fn detect_git_command(command: &str) -> Option<EventKind> {
     found
 }
 
-pub fn decide(event: &Event, state: &State, cfg: &Config) -> CelebrationLevel {
-    // Breakthrough: bash fail → pass
+pub fn decide(event: &Event, _state: &State, cfg: &Config) -> CelebrationLevel {
     if event.event == EventKind::PostToolUse {
         if let Some(tool) = &event.tool {
             if tool == "Bash" {
-                let exit_code = event
-                    .metadata
-                    .get("exit_code")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(-1);
-
                 // Check custom triggers first — if a command matches, use trigger's intensity
                 if let Some(command) = event.metadata.get("command").and_then(|v| v.as_str()) {
                     if let Some(level) = check_custom_triggers(command, cfg) {
@@ -82,29 +75,20 @@ pub fn decide(event: &Event, state: &State, cfg: &Config) -> CelebrationLevel {
                     }
 
                     // Detect git commit/push in successful Bash commands
-                    if exit_code == 0 {
-                        if let Some(git_kind) = detect_git_command(command) {
-                            return match git_kind {
-                                EventKind::GitCommit => {
-                                    CelebrationLevel::from(&cfg.intensity.milestone)
-                                }
-                                EventKind::GitPush => {
-                                    CelebrationLevel::from(&cfg.intensity.breakthrough)
-                                }
-                                _ => unreachable!(),
-                            };
-                        }
+                    if let Some(git_kind) = detect_git_command(command) {
+                        return match git_kind {
+                            EventKind::GitCommit => {
+                                CelebrationLevel::from(&cfg.intensity.milestone)
+                            }
+                            EventKind::GitPush => {
+                                CelebrationLevel::from(&cfg.intensity.breakthrough)
+                            }
+                            _ => unreachable!(),
+                        };
                     }
                 }
 
-                let prev_failed = state.last_bash_exit.map(|c| c != 0).unwrap_or(false);
-                if exit_code == 0 && prev_failed {
-                    return CelebrationLevel::from(&cfg.intensity.breakthrough);
-                }
-                if exit_code == 0 {
-                    return CelebrationLevel::from(&cfg.intensity.routine);
-                }
-                return CelebrationLevel::Off;
+                return CelebrationLevel::from(&cfg.intensity.routine);
             }
             if tool == "Write" || tool == "Edit" || tool == "Read" {
                 return CelebrationLevel::from(&cfg.intensity.routine);
@@ -157,26 +141,6 @@ mod tests {
             tty_path: "/dev/null".into(),
             metadata: HashMap::new(),
         }
-    }
-
-    #[test]
-    fn test_bash_success_after_failure_is_breakthrough() {
-        let cfg = Config::default();
-        let mut state = State::default();
-        state.last_bash_exit = Some(1);
-
-        let mut meta = HashMap::new();
-        meta.insert("exit_code".into(), serde_json::json!(0));
-        let event = Event {
-            event: EventKind::PostToolUse,
-            tool: Some("Bash".into()),
-            session_id: "test".into(),
-            tty_path: "/dev/null".into(),
-            metadata: meta,
-        };
-
-        let result = decide(&event, &state, &cfg);
-        assert_eq!(result, CelebrationLevel::Epic);
     }
 
     #[test]
@@ -283,14 +247,12 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_trigger_overrides_breakthrough() {
-        // Custom trigger takes priority even over fail→pass breakthrough
+    fn test_custom_trigger_overrides_git_detection() {
+        // Custom trigger takes priority over git command detection
         let cfg = config_with_triggers();
-        let mut state = State::default();
-        state.last_bash_exit = Some(1); // previous failure
+        let state = State::default();
         let event = make_bash_event_with_command("cargo test", 0);
         let result = decide(&event, &state, &cfg);
-        // Custom trigger (medium) overrides breakthrough (epic)
         assert_eq!(result, CelebrationLevel::Medium);
     }
 
@@ -406,11 +368,11 @@ mod tests {
     }
 
     #[test]
-    fn test_bash_git_push_failure_is_off() {
+    fn test_bash_routine_command_is_mini() {
         let cfg = Config::default();
         let state = State::default();
-        let event = make_bash_event_with_command("git push origin master", 1);
+        let event = make_bash_event_with_command("ls -la", 0);
         let result = decide(&event, &state, &cfg);
-        assert_eq!(result, CelebrationLevel::Off);
+        assert_eq!(result, CelebrationLevel::Mini);
     }
 }

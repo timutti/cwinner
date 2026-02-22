@@ -38,7 +38,6 @@ pub struct State {
     pub achievements_unlocked: Vec<String>,
     pub tools_used: HashSet<String>,
     pub last_event_at: Option<DateTime<Utc>>,
-    pub last_bash_exit: Option<i32>,
 }
 
 impl Default for State {
@@ -55,7 +54,6 @@ impl Default for State {
             achievements_unlocked: vec![],
             tools_used: HashSet::new(),
             last_event_at: None,
-            last_bash_exit: None,
         }
     }
 }

@@ -51,11 +51,11 @@ pub static REGISTRY: &[Achievement] = &[
         name: "Shipped It",
         description: "First git push",
     },
-    // Breakthrough (1)
+    // Testing (1)
     Achievement {
-        id: "test_whisperer",
-        name: "Test Whisperer",
-        description: "Fixed a failing bash command",
+        id: "first_test",
+        name: "Test Runner",
+        description: "Ran a test suite",
     },
     // Tools (2)
     Achievement {
@@ -148,6 +148,26 @@ pub static REGISTRY: &[Achievement] = &[
     },
 ];
 
+/// Check if a bash command looks like running a test suite.
+fn is_test_command(command: &str) -> bool {
+    command
+        .split("&&")
+        .flat_map(|s| s.split(';'))
+        .flat_map(|s| s.split("||"))
+        .any(|seg| {
+            let t = seg.trim();
+            t.starts_with("cargo test")
+                || t.starts_with("npm test")
+                || t.starts_with("npx jest")
+                || t.starts_with("npx vitest")
+                || t.starts_with("pytest")
+                || t.starts_with("python -m pytest")
+                || t.starts_with("go test")
+                || t.starts_with("make test")
+                || t.starts_with("bun test")
+        })
+}
+
 /// Returns achievements newly unlocked by this event (not already in state.achievements_unlocked).
 pub fn check_achievements(state: &State, event: &Event) -> Vec<&'static Achievement> {
     REGISTRY
@@ -179,16 +199,14 @@ fn is_unlocked(a: &Achievement, state: &State, event: &Event) -> bool {
                     && crate::celebration::detect_git_command(bash_command)
                         == Some(EventKind::GitPush))
         }
-        "test_whisperer" => {
+        "first_test" => {
             event.event == EventKind::PostToolUse
                 && tool == "Bash"
                 && event
                     .metadata
-                    .get("exit_code")
-                    .and_then(|v| v.as_i64())
-                    .map(|c| c == 0)
-                    .unwrap_or(false)
-                && state.last_bash_exit.map(|c| c != 0).unwrap_or(false)
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|cmd| is_test_command(cmd))
         }
         "tool_explorer" => state.tools_used.len() >= 5,
         "tool_master" => state.tools_used.len() >= 10,
@@ -348,28 +366,25 @@ mod tests {
     }
 
     #[test]
-    fn test_test_whisperer_unlocks_on_fail_to_pass() {
-        let mut s = State::default();
-        s.last_bash_exit = Some(1); // previous run failed
-        // current event: Bash exited 0
+    fn test_first_test_unlocks_on_cargo_test() {
+        let s = State::default();
         let mut event = ev(EventKind::PostToolUse, Some("Bash"));
         event
             .metadata
-            .insert("exit_code".into(), serde_json::json!(0));
+            .insert("command".into(), serde_json::json!("cargo test --release"));
         let unlocked = check_achievements(&s, &event);
-        assert!(unlocked.iter().any(|a| a.id == "test_whisperer"));
+        assert!(unlocked.iter().any(|a| a.id == "first_test"));
     }
 
     #[test]
-    fn test_test_whisperer_does_not_unlock_on_pass_to_pass() {
-        let mut s = State::default();
-        s.last_bash_exit = Some(0); // previous run also passed
+    fn test_first_test_does_not_unlock_on_non_test() {
+        let s = State::default();
         let mut event = ev(EventKind::PostToolUse, Some("Bash"));
         event
             .metadata
-            .insert("exit_code".into(), serde_json::json!(0));
+            .insert("command".into(), serde_json::json!("cargo build"));
         let unlocked = check_achievements(&s, &event);
-        assert!(!unlocked.iter().any(|a| a.id == "test_whisperer"));
+        assert!(!unlocked.iter().any(|a| a.id == "first_test"));
     }
 
     #[test]
