@@ -132,21 +132,21 @@ mod tests {
     }
 
     #[test]
-    fn test_task_completed_is_off_by_default() {
+    fn test_task_completed_is_medium_by_default() {
         let cfg = Config::default();
         let state = State::default();
         let event = make_event(EventKind::TaskCompleted, None);
         let result = decide(&event, &state, &cfg);
-        assert_eq!(result, CelebrationLevel::Off);
+        assert_eq!(result, CelebrationLevel::Medium);
     }
 
     #[test]
-    fn test_routine_write_is_off_by_default() {
+    fn test_routine_write_is_mini_by_default() {
         let cfg = Config::default();
         let state = State::default();
         let event = make_event(EventKind::PostToolUse, Some("Write"));
         let result = decide(&event, &state, &cfg);
-        assert_eq!(result, CelebrationLevel::Off);
+        assert_eq!(result, CelebrationLevel::Mini);
     }
 
     #[test]
@@ -230,8 +230,8 @@ mod tests {
         let state = State::default();
         let event = make_bash_event_with_command("ls -la", 0);
         let result = decide(&event, &state, &cfg);
-        // No trigger matches, exit_code=0, no prev failure → routine (Off by default)
-        assert_eq!(result, CelebrationLevel::Off);
+        // No trigger matches, exit_code=0, no prev failure → routine (Mini by default)
+        assert_eq!(result, CelebrationLevel::Mini);
     }
 
     #[test]
@@ -277,8 +277,8 @@ mod tests {
         let state = State::default();
         let event = make_bash_event_with_command("git push origin main", 0);
         let result = decide(&event, &state, &cfg);
-        // No triggers, exit_code=0, routine → Off
-        assert_eq!(result, CelebrationLevel::Off);
+        // No triggers, exit_code=0, routine → Mini
+        assert_eq!(result, CelebrationLevel::Mini);
     }
 
     #[test]
@@ -299,9 +299,9 @@ mod tests {
     fn test_custom_trigger_non_bash_tool_not_affected() {
         let cfg = config_with_triggers();
         let state = State::default();
-        // Write tool should not trigger custom trigger matching
+        // Write tool should not trigger custom trigger matching — returns routine level
         let event = make_event(EventKind::PostToolUse, Some("Write"));
         let result = decide(&event, &state, &cfg);
-        assert_eq!(result, CelebrationLevel::Off);
+        assert_eq!(result, CelebrationLevel::Mini);
     }
 }

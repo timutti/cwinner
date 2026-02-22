@@ -90,15 +90,19 @@ pub fn finish_render(mut guard: std::sync::MutexGuard<'static, Option<Instant>>)
     *guard = Some(Instant::now());
 }
 
-/// RAII guard that restores terminal state (leave alternate screen + show cursor)
-/// on drop, even if rendering panics or returns early via `?`.
+/// RAII guard that restores terminal state (leave alternate screen) on drop,
+/// even if rendering panics or returns early via `?`.
+///
+/// Note: we do NOT touch cursor visibility here. Claude Code's renderer owns
+/// the cursor on the main screen and immediately overrides any Show/Hide we
+/// send. Attempting to hide the cursor just creates a race condition.
 struct TermGuard<'a> {
     tty: &'a mut std::fs::File,
 }
 
 impl<'a> Drop for TermGuard<'a> {
     fn drop(&mut self) {
-        let _ = execute!(self.tty, LeaveAlternateScreen, cursor::Show);
+        let _ = execute!(self.tty, LeaveAlternateScreen);
     }
 }
 
@@ -180,16 +184,22 @@ pub fn render_progress_bar(tty_path: &str, state: &State) -> io::Result<()> {
     )?;
     let _guard = TermGuard { tty: &mut tty };
 
-    queue!(
-        _guard.tty,
-        cursor::MoveTo(0, bottom_row),
-        SetForegroundColor(color),
-        Print(format!("{:<width$}", msg, width = pad_width)),
-        ResetColor,
-    )?;
-    _guard.tty.flush()?;
-
-    thread::sleep(Duration::from_millis(3000));
+    let start = Instant::now();
+    loop {
+        queue!(
+            _guard.tty,
+            Clear(ClearType::All),
+            cursor::MoveTo(0, bottom_row),
+            SetForegroundColor(color),
+            Print(format!("{:<width$}", msg, width = pad_width)),
+            ResetColor,
+        )?;
+        _guard.tty.flush()?;
+        if start.elapsed() >= Duration::from_millis(3000) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
 
     Ok(())
 }
@@ -217,16 +227,22 @@ pub fn render_toast(tty_path: &str, state: &State, achievement: Option<&str>) ->
     )?;
     let _guard = TermGuard { tty: &mut tty };
 
-    queue!(
-        _guard.tty,
-        cursor::MoveTo(0, mid_row),
-        SetForegroundColor(color),
-        Print(format!("{:^width$}", msg, width = pad_width)),
-        ResetColor,
-    )?;
-    _guard.tty.flush()?;
-
-    thread::sleep(Duration::from_millis(duration));
+    let start = Instant::now();
+    loop {
+        queue!(
+            _guard.tty,
+            Clear(ClearType::All),
+            cursor::MoveTo(0, mid_row),
+            SetForegroundColor(color),
+            Print(format!("{:^width$}", msg, width = pad_width)),
+            ResetColor,
+        )?;
+        _guard.tty.flush()?;
+        if start.elapsed() >= Duration::from_millis(duration) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
 
     Ok(())
 }
@@ -272,33 +288,57 @@ fn render_epic(tty_path: &str, state: &State, achievement: &str) -> io::Result<(
     let border = "═".repeat(inner_width);
     let top = format!("╔{}╗", border);
     let bot = format!("╚{}╝", border);
+    let level_line = format!("Lvl {} {} ✦ {} XP", state.level, state.level_name, state.xp);
 
-    queue!(
-        _guard.tty,
-        cursor::MoveTo(0, mid_row.saturating_sub(3)),
-        SetForegroundColor(Color::Yellow),
-        Print(&top),
-        cursor::MoveTo(0, mid_row.saturating_sub(2)),
-        Print(format!("║{:^width$}║", "", width = inner_width)),
-        cursor::MoveTo(0, mid_row.saturating_sub(1)),
-        SetForegroundColor(Color::Green),
-        Print(format!("║{:^width$}║", achievement, width = inner_width)),
-        cursor::MoveTo(0, mid_row),
-        SetForegroundColor(Color::Cyan),
-        Print(format!(
-            "║{:^width$}║",
-            format!("Lvl {} {} ✦ {} XP", state.level, state.level_name, state.xp),
-            width = inner_width
-        )),
-        cursor::MoveTo(0, mid_row + 1),
-        SetForegroundColor(Color::Yellow),
-        Print(format!("║{:^width$}║", "", width = inner_width)),
-        cursor::MoveTo(0, mid_row + 2),
-        Print(&bot),
-        ResetColor,
-    )?;
-    _guard.tty.flush()?;
-    thread::sleep(Duration::from_millis(3500));
+    let start = Instant::now();
+    loop {
+        queue!(_guard.tty, Clear(ClearType::All))?;
+
+        // Redraw confetti background
+        for _ in 0..(cols / 4) {
+            let col = rng.random_range(0..cols);
+            let row = rng.random_range(0..rows.saturating_sub(2));
+            let ch = CONFETTI_CHARS[rng.random_range(0..CONFETTI_CHARS.len())];
+            let color = CONFETTI_COLORS[rng.random_range(0..CONFETTI_COLORS.len())];
+            queue!(
+                _guard.tty,
+                cursor::MoveTo(col, row),
+                SetForegroundColor(color),
+                Print(ch),
+            )?;
+        }
+
+        // Draw splash box on top
+        queue!(
+            _guard.tty,
+            cursor::MoveTo(0, mid_row.saturating_sub(3)),
+            SetForegroundColor(Color::Yellow),
+            Print(&top),
+            cursor::MoveTo(0, mid_row.saturating_sub(2)),
+            Print(format!("║{:^width$}║", "", width = inner_width)),
+            cursor::MoveTo(0, mid_row.saturating_sub(1)),
+            SetForegroundColor(Color::Green),
+            Print(format!("║{:^width$}║", achievement, width = inner_width)),
+            cursor::MoveTo(0, mid_row),
+            SetForegroundColor(Color::Cyan),
+            Print(format!(
+                "║{:^width$}║",
+                &level_line,
+                width = inner_width
+            )),
+            cursor::MoveTo(0, mid_row + 1),
+            SetForegroundColor(Color::Yellow),
+            Print(format!("║{:^width$}║", "", width = inner_width)),
+            cursor::MoveTo(0, mid_row + 2),
+            Print(&bot),
+            ResetColor,
+        )?;
+        _guard.tty.flush()?;
+        if start.elapsed() >= Duration::from_millis(3500) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
 
     Ok(())
 }

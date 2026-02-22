@@ -415,7 +415,8 @@ pub fn remove_git_hook_section(path: &Path) -> Result<()> {
 }
 
 const DEFAULT_CONFIG: &str = r#"[intensity]
-routine = "off"
+routine = "mini"
+task_completed = "medium"
 milestone = "medium"
 breakthrough = "epic"
 

@@ -22,8 +22,8 @@ pub struct IntensityConfig {
 impl Default for IntensityConfig {
     fn default() -> Self {
         Self {
-            routine: Intensity::Off,
-            task_completed: Intensity::Off,
+            routine: Intensity::Mini,
+            task_completed: Intensity::Medium,
             milestone: Intensity::Medium,
             breakthrough: Intensity::Epic,
         }
@@ -119,8 +119,8 @@ mod tests {
     #[test]
     fn test_default_config() {
         let cfg = Config::default();
-        assert_eq!(cfg.intensity.routine, Intensity::Off);
-        assert_eq!(cfg.intensity.task_completed, Intensity::Off);
+        assert_eq!(cfg.intensity.routine, Intensity::Mini);
+        assert_eq!(cfg.intensity.task_completed, Intensity::Medium);
         assert_eq!(cfg.intensity.milestone, Intensity::Medium);
         assert_eq!(cfg.intensity.breakthrough, Intensity::Epic);
         assert!(cfg.audio.enabled);

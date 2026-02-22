@@ -287,12 +287,12 @@ mod tests {
     }
 
     #[test]
-    fn test_process_event_task_completed_no_xp_by_default() {
+    fn test_process_event_task_completed_gives_xp_by_default() {
         let mut state = crate::state::State::default();
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::TaskCompleted);
         process_event_with_state(&event, &mut state, &cfg);
-        assert_eq!(state.xp, 0); // task_completed defaults to "off"
+        assert_eq!(state.xp, 25); // task_completed defaults to "medium" (25 XP)
     }
 
     #[test]
