@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 /// Global render lock — prevents concurrent alternate screen switches
 /// which confuse Claude Code's differential renderer.
-static RENDER_LOCK: Mutex<Option<Instant>> = Mutex::new(None);
+static RENDER_LOCK: Mutex<Option<(Instant, CelebrationLevel)>> = Mutex::new(None);
 
 /// Minimum gap between renders to let Claude Code's renderer recover.
 const RENDER_COOLDOWN: Duration = Duration::from_millis(3500);
@@ -72,22 +72,28 @@ pub fn xp_progress(level: u32, xp: u32) -> (u32, u32) {
 /// Acquire the render lock and check cooldown. Returns the guard if rendering
 /// is allowed, or None if we should skip (too recent). The caller MUST call
 /// `finish_render` with the guard when done.
-pub fn acquire_render_slot() -> Option<std::sync::MutexGuard<'static, Option<Instant>>> {
+pub fn acquire_render_slot(
+    level: &CelebrationLevel,
+) -> Option<std::sync::MutexGuard<'static, Option<(Instant, CelebrationLevel)>>> {
     let guard = match RENDER_LOCK.lock() {
         Ok(g) => g,
         Err(e) => e.into_inner(),
     };
-    if let Some(last) = *guard {
-        if last.elapsed() < RENDER_COOLDOWN {
+    if let Some((last_time, ref last_level)) = *guard {
+        if last_time.elapsed() < RENDER_COOLDOWN && level <= last_level {
+            // Skip cooldown only for lower/equal level; higher level always renders
             return None;
         }
     }
     Some(guard)
 }
 
-/// Mark render as finished — sets the cooldown timestamp.
-pub fn finish_render(mut guard: std::sync::MutexGuard<'static, Option<Instant>>) {
-    *guard = Some(Instant::now());
+/// Mark render as finished — sets the cooldown timestamp and level.
+pub fn finish_render(
+    mut guard: std::sync::MutexGuard<'static, Option<(Instant, CelebrationLevel)>>,
+    level: &CelebrationLevel,
+) {
+    *guard = Some((Instant::now(), level.clone()));
 }
 
 /// RAII guard that restores terminal state (leave alternate screen) on drop,

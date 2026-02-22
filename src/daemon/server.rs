@@ -215,7 +215,7 @@ async fn handle_connection(
             let cfg2 = Arc::clone(&cfg);
             tokio::task::spawn_blocking(move || {
                 std::thread::sleep(std::time::Duration::from_millis(200));
-                let Some(guard) = crate::renderer::acquire_render_slot() else {
+                let Some(guard) = crate::renderer::acquire_render_slot(&level) else {
                     eprintln!("[cwinnerd] SKIPPED (cooldown)");
                     return;
                 };
@@ -235,7 +235,7 @@ async fn handle_connection(
                     &state_snapshot,
                     achievement_name.as_deref(),
                 );
-                crate::renderer::finish_render(guard);
+                crate::renderer::finish_render(guard, &level);
             });
         }
     }
