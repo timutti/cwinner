@@ -206,7 +206,7 @@ fn is_unlocked(a: &Achievement, state: &State, event: &Event) -> bool {
                     .metadata
                     .get("command")
                     .and_then(|v| v.as_str())
-                    .is_some_and(|cmd| is_test_command(cmd))
+                    .is_some_and(is_test_command)
         }
         "tool_explorer" => state.tools_used.len() >= 5,
         "tool_master" => state.tools_used.len() >= 10,
