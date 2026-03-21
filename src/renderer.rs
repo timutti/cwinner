@@ -521,10 +521,10 @@ mod tests {
         assert_eq!(in_l, 5000);
         assert_eq!(needed, 15000);
 
-        // Level 10 (max), 80000 XP: threshold = 75000, next = u32::MAX
-        let (in_l, needed) = xp_progress(10, 80000);
-        assert_eq!(in_l, 5000);
-        assert_eq!(needed, u32::MAX - 75000);
+        // Level 200 (max), 320000000 XP: threshold = 319000000, next = u32::MAX
+        let (in_l, needed) = xp_progress(200, 320_000_000);
+        assert_eq!(in_l, 1_000_000);
+        assert_eq!(needed, u32::MAX - 319_000_000);
     }
 
     /// Verify that xp_progress(1, 0) starts clean at level 1.
@@ -565,6 +565,14 @@ mod tests {
             (9, 60000),
             (10, 75000),
             (10, 100000),
+            (50, 2_120_000),
+            (50, 2_150_000),
+            (100, 13_100_000),
+            (100, 13_200_000),
+            (150, 65_800_000),
+            (150, 66_000_000),
+            (200, 319_000_000),
+            (200, 400_000_000),
         ];
         for (level, xp) in cases {
             let (in_l, needed) = xp_progress(level, xp);
@@ -626,13 +634,13 @@ mod tests {
     #[test]
     fn test_format_toast_msg_mini_max_level() {
         let mut state = State::default();
-        state.xp = 80000;
-        state.level = 10;
-        state.level_name = "Singularity".into();
+        state.xp = 320_000_000;
+        state.level = 200;
+        state.level_name = "Code God".into();
         let (msg, color) = format_toast_msg(&state, None, None);
         assert!(msg.contains("⚡"));
-        assert!(msg.contains("Singularity"));
-        assert!(msg.contains("80000 XP"));
+        assert!(msg.contains("Code God"));
+        assert!(msg.contains("320000000 XP"));
         assert!(msg.contains("MAX"));
         assert_eq!(color, Color::Cyan);
     }

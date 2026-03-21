@@ -68,7 +68,7 @@ pub static REGISTRY: &[Achievement] = &[
         name: "Tool Master",
         description: "Used 10 different tools",
     },
-    // Levels (4)
+    // Levels (18)
     Achievement {
         id: "level_2",
         name: "Prompt Whisperer",
@@ -98,6 +98,66 @@ pub static REGISTRY: &[Achievement] = &[
         id: "level_10",
         name: "Singularity",
         description: "Reached level 10",
+    },
+    Achievement {
+        id: "level_15",
+        name: "Algorithm Ace",
+        description: "Reached level 15",
+    },
+    Achievement {
+        id: "level_20",
+        name: "Kilobyte Knight",
+        description: "Reached level 20",
+    },
+    Achievement {
+        id: "level_25",
+        name: "Hash Hermit",
+        description: "Reached level 25",
+    },
+    Achievement {
+        id: "level_30",
+        name: "Pipeline Paladin",
+        description: "Reached level 30",
+    },
+    Achievement {
+        id: "level_40",
+        name: "Data Duke",
+        description: "Reached level 40",
+    },
+    Achievement {
+        id: "level_50",
+        name: "Network Nomad",
+        description: "Reached level 50",
+    },
+    Achievement {
+        id: "level_75",
+        name: "Format Friar",
+        description: "Reached level 75",
+    },
+    Achievement {
+        id: "level_100",
+        name: "Rustacean",
+        description: "Reached level 100",
+    },
+    Achievement {
+        id: "level_125",
+        name: "Panic Purifier",
+        description: "Reached level 125",
+    },
+    Achievement {
+        id: "level_150",
+        name: "Time Lord",
+        description: "Reached level 150",
+    },
+    Achievement {
+        id: "level_175",
+        name: "Chrome Chimera",
+        description: "Reached level 175",
+    },
+    Achievement {
+        id: "level_200",
+        name: "Code God",
+        description: "Reached level 200",
     },
     // Claude Code basics (4)
     Achievement {
@@ -210,12 +270,9 @@ fn is_unlocked(a: &Achievement, state: &State, event: &Event) -> bool {
         }
         "tool_explorer" => state.tools_used.len() >= 5,
         "tool_master" => state.tools_used.len() >= 10,
-        "level_2" => state.level >= 2,
-        "level_3" => state.level >= 3,
-        "level_4" => state.level >= 4,
-        "level_5" => state.level >= 5,
-        "level_7" => state.level >= 7,
-        "level_10" => state.level >= 10,
+        id if id.starts_with("level_") => id["level_".len()..]
+            .parse::<u32>()
+            .is_ok_and(|n| state.level >= n),
         "first_subagent" => state.tools_used.contains("Task"),
         "web_surfer" => state.tools_used.contains("WebSearch"),
         "researcher" => state.tools_used.contains("WebFetch"),
@@ -247,8 +304,8 @@ mod tests {
     }
 
     #[test]
-    fn test_registry_has_24_achievements() {
-        assert_eq!(REGISTRY.len(), 26);
+    fn test_registry_has_expected_achievements() {
+        assert_eq!(REGISTRY.len(), 38);
     }
 
     #[test]
