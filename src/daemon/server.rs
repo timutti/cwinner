@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 
 /// Duration milestones in minutes and their celebration levels
@@ -230,7 +230,7 @@ async fn handle_connection(
 
         if level != CelebrationLevel::Off {
             let cfg2 = Arc::clone(&cfg);
-            tokio::task::spawn_blocking(move || {
+            let _ = tokio::task::spawn_blocking(move || {
                 std::thread::sleep(std::time::Duration::from_millis(200));
                 let Some(guard) = crate::renderer::acquire_render_slot(&level) else {
                     eprintln!("[cwinnerd] SKIPPED (cooldown)");
@@ -257,8 +257,12 @@ async fn handle_connection(
                     event_label.as_deref(),
                 );
                 crate::renderer::finish_render(guard, &level);
-            });
+            })
+            .await;
         }
+
+        // Signal hook process that rendering is done — unblocks Claude Code
+        let _ = stream.write_all(b"ok\n").await;
     }
 
     Ok(())

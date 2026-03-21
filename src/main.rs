@@ -278,7 +278,7 @@ fn send_hook_event(event: HookEvent, tty_path: &str) {
     use cwinner_lib::daemon::server::socket_path;
     use cwinner_lib::event::{Event, EventKind};
     use std::collections::HashMap;
-    use std::io::Write;
+    use std::io::{Read, Write};
     use std::os::unix::net::UnixStream;
 
     // Read stdin (Claude Code sends JSON)
@@ -337,6 +337,14 @@ fn send_hook_event(event: HookEvent, tty_path: &str) {
 
     let json = serde_json::to_string(&e).unwrap_or_default();
     let _ = stream.write_all(format!("{}\n", json).as_bytes());
+
+    // Block until daemon finishes rendering so Claude Code doesn't write to the
+    // terminal while alternate screen is active (which would swallow its output).
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .ok();
+    let mut ack = [0u8; 4];
+    let _ = stream.read(&mut ack);
 }
 
 /// Start the daemon as a detached background process so it inherits the
