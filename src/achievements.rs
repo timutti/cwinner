@@ -310,25 +310,31 @@ mod tests {
 
     #[test]
     fn test_first_commit_unlocks_on_first_commit() {
-        let mut s = State::default();
-        s.commits_total = 1;
+        let s = State {
+            commits_total: 1,
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
         assert!(unlocked.iter().any(|a| a.id == "first_commit"));
     }
 
     #[test]
     fn test_streak_5_unlocks_at_5_days() {
-        let mut s = State::default();
-        s.commit_streak_days = 5;
+        let s = State {
+            commit_streak_days: 5,
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
         assert!(unlocked.iter().any(|a| a.id == "streak_5"));
     }
 
     #[test]
     fn test_no_duplicate_unlocks() {
-        let mut s = State::default();
-        s.commits_total = 1;
-        s.achievements_unlocked = vec!["first_commit".into()];
+        let s = State {
+            commits_total: 1,
+            achievements_unlocked: vec!["first_commit".into()],
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
         assert!(!unlocked.iter().any(|a| a.id == "first_commit"));
     }
@@ -352,8 +358,10 @@ mod tests {
 
     #[test]
     fn test_level_2_unlocks_at_level_2() {
-        let mut s = State::default();
-        s.level = 2;
+        let s = State {
+            level: 2,
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::TaskCompleted, None));
         assert!(unlocked.iter().any(|a| a.id == "level_2"));
     }
@@ -377,40 +385,50 @@ mod tests {
 
     #[test]
     fn test_commit_10_unlocks() {
-        let mut s = State::default();
-        s.commits_total = 10;
+        let s = State {
+            commits_total: 10,
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
         assert!(unlocked.iter().any(|a| a.id == "commit_10"));
     }
 
     #[test]
     fn test_commit_50_unlocks() {
-        let mut s = State::default();
-        s.commits_total = 50;
+        let s = State {
+            commits_total: 50,
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
         assert!(unlocked.iter().any(|a| a.id == "commit_50"));
     }
 
     #[test]
     fn test_commit_100_unlocks() {
-        let mut s = State::default();
-        s.commits_total = 100;
+        let s = State {
+            commits_total: 100,
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
         assert!(unlocked.iter().any(|a| a.id == "commit_100"));
     }
 
     #[test]
     fn test_streak_10_unlocks() {
-        let mut s = State::default();
-        s.commit_streak_days = 10;
+        let s = State {
+            commit_streak_days: 10,
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
         assert!(unlocked.iter().any(|a| a.id == "streak_10"));
     }
 
     #[test]
     fn test_streak_25_unlocks() {
-        let mut s = State::default();
-        s.commit_streak_days = 25;
+        let s = State {
+            commit_streak_days: 25,
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::GitCommit, None));
         assert!(unlocked.iter().any(|a| a.id == "streak_25"));
     }
@@ -467,24 +485,30 @@ mod tests {
 
     #[test]
     fn test_level_3_unlocks() {
-        let mut s = State::default();
-        s.level = 3;
+        let s = State {
+            level: 3,
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::TaskCompleted, None));
         assert!(unlocked.iter().any(|a| a.id == "level_3"));
     }
 
     #[test]
     fn test_level_4_unlocks() {
-        let mut s = State::default();
-        s.level = 4;
+        let s = State {
+            level: 4,
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::TaskCompleted, None));
         assert!(unlocked.iter().any(|a| a.id == "level_4"));
     }
 
     #[test]
     fn test_level_5_unlocks() {
-        let mut s = State::default();
-        s.level = 5;
+        let s = State {
+            level: 5,
+            ..Default::default()
+        };
         let unlocked = check_achievements(&s, &ev(EventKind::TaskCompleted, None));
         assert!(unlocked.iter().any(|a| a.id == "level_5"));
     }

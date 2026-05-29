@@ -577,13 +577,13 @@ confetti_duration_ms = 1500
 splash_duration_ms = 2000
 
 # [triggers]
-# Custom triggers — celebrate specific patterns in tool output.
-# Each trigger needs: name, pattern (regex), intensity (off/mini/medium/epic).
+# Custom triggers — celebrate specific bash commands (substring match).
+# Each trigger needs: name, pattern (substring), intensity (off/mini/medium/epic).
 #
 # Example:
 # [[triggers.custom]]
 # name = "deploy"
-# pattern = "git push.*production"
+# pattern = "git push"
 # intensity = "epic"
 "#;
 
@@ -897,9 +897,8 @@ mod tests {
             5000,
             "extra keys should be preserved"
         );
-        assert_eq!(
+        assert!(
             v["statusLine"]["enabled"].as_bool().unwrap(),
-            true,
             "extra keys should be preserved"
         );
     }

@@ -455,10 +455,12 @@ mod tests {
 
     #[test]
     fn test_format_toast_msg_regular() {
-        let mut state = State::default();
-        state.xp = 250;
-        state.level = 2;
-        state.level_name = "Prompt Whisperer".into();
+        let state = State {
+            xp: 250,
+            level: 2,
+            level_name: "Prompt Whisperer".into(),
+            ..Default::default()
+        };
         let (msg, color) = format_toast_msg(&state, None, None);
         assert!(msg.contains("Prompt Whisperer"));
         assert!(msg.contains("250 XP"));
@@ -468,10 +470,12 @@ mod tests {
 
     #[test]
     fn test_format_toast_msg_achievement() {
-        let mut state = State::default();
-        state.xp = 500;
-        state.level = 3;
-        state.level_name = "Vibe Architect".into();
+        let state = State {
+            xp: 500,
+            level: 3,
+            level_name: "Vibe Architect".into(),
+            ..Default::default()
+        };
         let (msg, color) = format_toast_msg(&state, Some("First Commit"), None);
         assert!(msg.contains("🏆"));
         assert!(msg.contains("First Commit"));
@@ -482,10 +486,12 @@ mod tests {
 
     #[test]
     fn test_format_toast_msg_with_label() {
-        let mut state = State::default();
-        state.xp = 250;
-        state.level = 2;
-        state.level_name = "Prompt Whisperer".into();
+        let state = State {
+            xp: 250,
+            level: 2,
+            level_name: "Prompt Whisperer".into(),
+            ..Default::default()
+        };
         let (msg, color) = format_toast_msg(&state, None, Some("✓ Task Completed"));
         assert!(msg.contains("✓ Task Completed"));
         assert!(msg.contains("Prompt Whisperer"));
@@ -603,10 +609,12 @@ mod tests {
 
     #[test]
     fn test_format_toast_msg_mini_regular() {
-        let mut state = State::default();
-        state.xp = 50;
-        state.level = 1;
-        state.level_name = "Vibe Initiate".into();
+        let state = State {
+            xp: 50,
+            level: 1,
+            level_name: "Vibe Initiate".into(),
+            ..Default::default()
+        };
         let (msg, color) = format_toast_msg(&state, None, None);
         assert!(msg.contains("⚡"));
         assert!(msg.contains("Vibe Initiate"));
@@ -617,10 +625,12 @@ mod tests {
 
     #[test]
     fn test_format_toast_msg_mini_mid_level() {
-        let mut state = State::default();
-        state.xp = 750;
-        state.level = 3;
-        state.level_name = "Vibe Architect".into();
+        let state = State {
+            xp: 750,
+            level: 3,
+            level_name: "Vibe Architect".into(),
+            ..Default::default()
+        };
         let (msg, color) = format_toast_msg(&state, None, None);
         assert!(msg.contains("⚡"));
         assert!(msg.contains("Vibe Architect"));
@@ -633,10 +643,12 @@ mod tests {
 
     #[test]
     fn test_format_toast_msg_mini_max_level() {
-        let mut state = State::default();
-        state.xp = 320_000_000;
-        state.level = 200;
-        state.level_name = "Code God".into();
+        let state = State {
+            xp: 320_000_000,
+            level: 200,
+            level_name: "Code God".into(),
+            ..Default::default()
+        };
         let (msg, color) = format_toast_msg(&state, None, None);
         assert!(msg.contains("⚡"));
         assert!(msg.contains("Code God"));
@@ -648,10 +660,12 @@ mod tests {
     #[test]
     fn test_format_toast_msg_mini_no_achievement() {
         // Mini celebration (None achievement) never shows trophy
-        let mut state = State::default();
-        state.xp = 250;
-        state.level = 2;
-        state.level_name = "Prompt Whisperer".into();
+        let state = State {
+            xp: 250,
+            level: 2,
+            level_name: "Prompt Whisperer".into(),
+            ..Default::default()
+        };
         let (msg, _) = format_toast_msg(&state, None, None);
         // Should not contain trophy emoji
         assert!(!msg.contains("🏆"));
@@ -661,10 +675,12 @@ mod tests {
 
     #[test]
     fn test_format_toast_msg_mini_format_structure() {
-        let mut state = State::default();
-        state.xp = 250;
-        state.level = 2;
-        state.level_name = "Prompt Whisperer".into();
+        let state = State {
+            xp: 250,
+            level: 2,
+            level_name: "Prompt Whisperer".into(),
+            ..Default::default()
+        };
         let (msg, _) = format_toast_msg(&state, None, None);
         // Mini (no label): "⚡ Level │ bar │ XP" = 2 delimiters
         let delimiter_count = msg.matches('│').count();

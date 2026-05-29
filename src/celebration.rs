@@ -172,8 +172,10 @@ mod tests {
 
     #[test]
     fn test_streak_bonus_doubles_xp() {
-        let mut state = State::default();
-        state.commit_streak_days = 5;
+        let state = State {
+            commit_streak_days: 5,
+            ..Default::default()
+        };
         assert_eq!(xp_for_event(&CelebrationLevel::Medium, &state), 50); // 25 * 2
     }
 
@@ -200,22 +202,23 @@ mod tests {
 
     fn config_with_triggers() -> Config {
         use crate::config::{CustomTrigger, Intensity, TriggersConfig};
-        let mut cfg = Config::default();
-        cfg.triggers = TriggersConfig {
-            custom: vec![
-                CustomTrigger {
-                    name: "deploy".into(),
-                    pattern: "git push".into(),
-                    intensity: Intensity::Epic,
-                },
-                CustomTrigger {
-                    name: "test".into(),
-                    pattern: "cargo test".into(),
-                    intensity: Intensity::Medium,
-                },
-            ],
-        };
-        cfg
+        Config {
+            triggers: TriggersConfig {
+                custom: vec![
+                    CustomTrigger {
+                        name: "deploy".into(),
+                        pattern: "git push".into(),
+                        intensity: Intensity::Epic,
+                    },
+                    CustomTrigger {
+                        name: "test".into(),
+                        pattern: "cargo test".into(),
+                        intensity: Intensity::Medium,
+                    },
+                ],
+            },
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -259,20 +262,22 @@ mod tests {
     #[test]
     fn test_custom_trigger_first_match_wins() {
         use crate::config::{CustomTrigger, Intensity, TriggersConfig};
-        let mut cfg = Config::default();
-        cfg.triggers = TriggersConfig {
-            custom: vec![
-                CustomTrigger {
-                    name: "first".into(),
-                    pattern: "git".into(),
-                    intensity: Intensity::Mini,
-                },
-                CustomTrigger {
-                    name: "second".into(),
-                    pattern: "git push".into(),
-                    intensity: Intensity::Epic,
-                },
-            ],
+        let cfg = Config {
+            triggers: TriggersConfig {
+                custom: vec![
+                    CustomTrigger {
+                        name: "first".into(),
+                        pattern: "git".into(),
+                        intensity: Intensity::Mini,
+                    },
+                    CustomTrigger {
+                        name: "second".into(),
+                        pattern: "git push".into(),
+                        intensity: Intensity::Epic,
+                    },
+                ],
+            },
+            ..Default::default()
         };
         let state = State::default();
         let event = make_bash_event_with_command("git push origin main", 0);

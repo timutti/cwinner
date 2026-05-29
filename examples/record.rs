@@ -8,12 +8,14 @@ use std::thread;
 use std::time::Duration;
 
 fn main() {
-    let mut state = State::default();
-    state.xp = 1325;
-    state.level = 3;
-    state.level_name = "Vibe Architect".into();
-    state.commits_total = 12;
-    state.commit_streak_days = 3;
+    let state = State {
+        xp: 1325,
+        level: 3,
+        level_name: "Vibe Architect".into(),
+        commits_total: 12,
+        commit_streak_days: 3,
+        ..Default::default()
+    };
 
     let tty = "/dev/tty".to_string();
 

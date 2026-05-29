@@ -98,7 +98,15 @@ pub async fn run() -> anyhow::Result<()> {
     );
 
     loop {
-        let (stream, _) = listener.accept().await?;
+        let (stream, _) = match listener.accept().await {
+            Ok(conn) => conn,
+            Err(e) => {
+                // A transient accept error shouldn't kill the daemon; log and retry.
+                eprintln!("[cwinnerd] accept error: {e}");
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                continue;
+            }
+        };
         let state = Arc::clone(&state);
         let cfg = Arc::clone(&cfg);
         let sessions = Arc::clone(&sessions);
@@ -397,8 +405,10 @@ mod tests {
 
     #[test]
     fn test_level_up_achievement_fires() {
-        let mut state = crate::state::State::default();
-        state.xp = 95; // just below level 2 (100 XP)
+        let mut state = crate::state::State {
+            xp: 95, // just below level 2 (100 XP)
+            ..Default::default()
+        };
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::GitCommit); // adds 25 XP (milestone) → level 2
 
@@ -410,8 +420,10 @@ mod tests {
 
     #[test]
     fn test_no_level_up_returns_false() {
-        let mut state = crate::state::State::default();
-        state.xp = 10;
+        let mut state = crate::state::State {
+            xp: 10,
+            ..Default::default()
+        };
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::TaskCompleted); // adds 25 XP, stays level 1
 
@@ -422,10 +434,12 @@ mod tests {
 
     #[test]
     fn test_streak_bonus_applied_in_process_event() {
-        let mut state = crate::state::State::default();
-        state.commit_streak_days = 5;
         let yesterday = chrono::Utc::now().date_naive().pred_opt().unwrap();
-        state.last_commit_date = Some(yesterday);
+        let mut state = crate::state::State {
+            commit_streak_days: 5,
+            last_commit_date: Some(yesterday),
+            ..Default::default()
+        };
         let cfg = crate::config::Config::default();
         let event = make_event(EventKind::GitCommit);
 

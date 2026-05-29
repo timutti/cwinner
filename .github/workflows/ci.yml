@@ -8,7 +8,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -17,14 +22,36 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
       - name: Format check
         run: cargo fmt --all -- --check
 
+      - name: Clippy (all targets, warnings as errors)
+        run: cargo clippy --all-targets -- -D warnings
+
       - name: Build
-        run: cargo build
+        run: cargo build --all-targets
 
       - name: Test
         run: cargo test
 
-      - name: Clippy
-        run: cargo clippy -- -D warnings
+  msrv:
+    name: MSRV (1.85.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Build on minimum supported Rust
+        run: cargo build
+
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

@@ -337,7 +337,9 @@ impl State {
             std::fs::create_dir_all(parent)?;
         }
         let data = serde_json::to_string_pretty(self)?;
-        let tmp_path = path.with_extension("tmp");
+        // Per-process temp name so two daemons never clobber each other's
+        // in-flight write before the atomic rename.
+        let tmp_path = path.with_extension(format!("tmp.{}", std::process::id()));
         std::fs::write(&tmp_path, &data)?;
         std::fs::rename(&tmp_path, path)?;
         Ok(())

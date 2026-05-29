@@ -244,7 +244,7 @@ fn get_tty() -> String {
                 .output()
             {
                 let line = String::from_utf8_lossy(&output.stdout);
-                let parts: Vec<&str> = line.trim().split_whitespace().collect();
+                let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 2 {
                     let ppid = parts[0];
                     let tty = parts[1];

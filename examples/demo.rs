@@ -7,10 +7,12 @@ use cwinner_lib::state::State;
 use std::io::{self, Write};
 
 fn main() {
-    let mut state = State::default();
-    state.xp = 1325;
-    state.level = 3;
-    state.level_name = "Vibe Architect".into();
+    let state = State {
+        xp: 1325,
+        level: 3,
+        level_name: "Vibe Architect".into(),
+        ..Default::default()
+    };
 
     println!("cwinner celebration demo");
     println!("========================");
