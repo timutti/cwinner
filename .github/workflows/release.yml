@@ -26,7 +26,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -68,18 +68,25 @@ jobs:
           cd target/${{ matrix.target }}/release
           tar czf ../../../cwinner-${{ matrix.target }}.tar.gz cwinner
           cd ../../..
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum cwinner-${{ matrix.target }}.tar.gz > cwinner-${{ matrix.target }}.tar.gz.sha256
+          else
+            shasum -a 256 cwinner-${{ matrix.target }}.tar.gz > cwinner-${{ matrix.target }}.tar.gz.sha256
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: cwinner-${{ matrix.target }}
-          path: cwinner-${{ matrix.target }}.tar.gz
+          path: |
+            cwinner-${{ matrix.target }}.tar.gz
+            cwinner-${{ matrix.target }}.tar.gz.sha256
 
   release:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -91,4 +98,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: artifacts/**/*.tar.gz
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.sha256

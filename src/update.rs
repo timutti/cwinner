@@ -71,6 +71,30 @@ pub fn update(binary_path: &Path) -> Result<()> {
         bail!("download failed for {target}");
     }
 
+    // Verify the download against the published SHA-256 before trusting it.
+    let checksum_url = format!("{url}.sha256");
+    let verify = || -> Result<()> {
+        let body = Command::new("curl")
+            .args(["-fsSL", &checksum_url])
+            .output()
+            .context("failed to run curl for checksum")?;
+        if !body.status.success() {
+            bail!("could not download checksum from {checksum_url}");
+        }
+        let expected = parse_sha256_digest(&String::from_utf8_lossy(&body.stdout))
+            .context("malformed checksum file")?;
+        let actual = sha256_of_file(&tarball)?;
+        if actual != expected {
+            bail!("checksum mismatch: expected {expected}, got {actual}");
+        }
+        Ok(())
+    };
+    if let Err(e) = verify() {
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        return Err(e.context("refusing to install an unverified binary"));
+    }
+    println!("Checksum verified.");
+
     // Extract
     let status = Command::new("tar")
         .args([
@@ -156,4 +180,78 @@ fn cmd_stdout(program: &str, args: &[&str]) -> Result<String> {
         .output()
         .with_context(|| format!("failed to run {program}"))?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Parse the hex digest from a `sha256sum` / `shasum -a 256` line, which looks
+/// like "<64-hex-chars>  <filename>". Returns the lowercased digest, or None if
+/// the first token isn't a valid SHA-256 hex string.
+fn parse_sha256_digest(checksum_file: &str) -> Option<String> {
+    let token = checksum_file.split_whitespace().next()?;
+    if token.len() == 64 && token.chars().all(|c| c.is_ascii_hexdigit()) {
+        Some(token.to_ascii_lowercase())
+    } else {
+        None
+    }
+}
+
+/// Compute the SHA-256 of a file using the system tool (`sha256sum` on Linux,
+/// `shasum -a 256` on macOS) and return the lowercase hex digest.
+fn sha256_of_file(path: &Path) -> Result<String> {
+    let path_str = path.to_str().context("non-UTF-8 path")?;
+    let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "macos") {
+        ("shasum", vec!["-a", "256", path_str])
+    } else {
+        ("sha256sum", vec![path_str])
+    };
+    let output = Command::new(cmd)
+        .args(&args)
+        .output()
+        .with_context(|| format!("failed to run {cmd}"))?;
+    if !output.status.success() {
+        bail!("{cmd} failed to hash {path_str}");
+    }
+    parse_sha256_digest(&String::from_utf8_lossy(&output.stdout))
+        .context("could not parse checksum tool output")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_sha256_digest_valid() {
+        let line = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  cwinner-x86_64-apple-darwin.tar.gz";
+        assert_eq!(
+            parse_sha256_digest(line).as_deref(),
+            Some("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+        );
+    }
+
+    #[test]
+    fn test_parse_sha256_digest_normalizes_case() {
+        let line = "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789  f";
+        assert_eq!(
+            parse_sha256_digest(line).as_deref(),
+            Some("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
+        );
+    }
+
+    #[test]
+    fn test_parse_sha256_digest_rejects_garbage() {
+        assert_eq!(parse_sha256_digest(""), None);
+        assert_eq!(parse_sha256_digest("not-a-hash file"), None);
+        assert_eq!(parse_sha256_digest("deadbeef short"), None);
+    }
+
+    #[test]
+    fn test_sha256_of_file_matches_known_vector() {
+        // SHA-256 of the bytes "hello" (no trailing newline) is well-known.
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("data");
+        std::fs::write(&f, b"hello").unwrap();
+        assert_eq!(
+            sha256_of_file(&f).unwrap(),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
 }
