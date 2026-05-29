@@ -355,11 +355,9 @@ fn try_start_daemon(socket: &std::path::Path) -> bool {
     use std::os::unix::net::UnixStream;
     use std::process::{Command, Stdio};
 
-    // Remove stale socket if present
-    if socket.exists() {
-        let _ = std::fs::remove_file(socket);
-    }
-
+    // Don't delete the socket here: the spawned daemon's run() removes any stale
+    // socket itself once it wins the single-instance lock. Deleting it here could
+    // unlink a live daemon's socket during a transient connect failure.
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("cwinner"));
     let res = unsafe {
         Command::new(&exe)

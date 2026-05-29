@@ -76,11 +76,41 @@ pub fn socket_path() -> PathBuf {
         .join("cwinner.sock")
 }
 
+/// Try to acquire the exclusive single-instance lock for the daemon. Returns
+/// the held file (the caller must keep it alive for the process lifetime) or
+/// `None` if another daemon already holds it. Uses an advisory `flock`, which
+/// the OS releases automatically when the process exits or crashes.
+fn acquire_instance_lock(lock_path: &std::path::Path) -> Option<std::fs::File> {
+    use std::os::unix::io::AsRawFd;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(lock_path)
+        .ok()?;
+    // LOCK_EX | LOCK_NB: take the exclusive lock or fail immediately if held.
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if rc == 0 { Some(file) } else { None }
+}
+
 pub async fn run() -> anyhow::Result<()> {
     let path = socket_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+
+    // Single-instance guard: hold an exclusive lock for the daemon's lifetime
+    // so a second daemon (e.g. one a hook auto-starts during a restart) exits
+    // immediately instead of fighting over the socket. Released on exit/crash.
+    let lock_path = path.with_file_name("cwinner.lock");
+    let _instance_lock = match acquire_instance_lock(&lock_path) {
+        Some(file) => file,
+        None => {
+            eprintln!("[cwinnerd] another daemon already holds the lock; exiting");
+            return Ok(());
+        }
+    };
+
     let _ = std::fs::remove_file(&path);
 
     let listener = UnixListener::bind(&path)?;
@@ -358,6 +388,23 @@ mod tests {
     use super::*;
     use crate::event::{Event, EventKind};
     use std::collections::HashMap;
+
+    #[test]
+    fn test_single_instance_lock_is_exclusive() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("cwinner.lock");
+
+        let first = acquire_instance_lock(&lock).expect("first daemon acquires the lock");
+        assert!(
+            acquire_instance_lock(&lock).is_none(),
+            "second daemon must not acquire the lock while the first holds it"
+        );
+        drop(first);
+        assert!(
+            acquire_instance_lock(&lock).is_some(),
+            "lock is available again once the first holder exits"
+        );
+    }
 
     fn make_event(kind: EventKind) -> Event {
         Event {
